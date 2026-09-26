@@ -1,0 +1,6 @@
+{
+  "IntegrationFramework.Api, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\HardeepSingh\\integration-framework\\backend\\src\\IntegrationFramework.Api",
+  "IntegrationFramework.Connectors, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\HardeepSingh\\integration-framework\\backend\\src\\IntegrationFramework.Connectors",
+  "IntegrationFramework.Core, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\HardeepSingh\\integration-framework\\backend\\src\\IntegrationFramework.Core",
+  "IntegrationFramework.Worker, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\HardeepSingh\\integration-framework\\backend\\src\\IntegrationFramework.Worker"
+}

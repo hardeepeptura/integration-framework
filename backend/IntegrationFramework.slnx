@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/IntegrationFramework.Api/IntegrationFramework.Api.csproj" />
+    <Project Path="src/IntegrationFramework.Connectors/IntegrationFramework.Connectors.csproj" />
+    <Project Path="src/IntegrationFramework.Core/IntegrationFramework.Core.csproj" />
+    <Project Path="src/IntegrationFramework.Worker/IntegrationFramework.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/IntegrationFramework.Tests/IntegrationFramework.Tests.csproj" />
+  </Folder>
+</Solution>
