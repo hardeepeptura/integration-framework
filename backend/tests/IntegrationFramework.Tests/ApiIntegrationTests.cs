@@ -35,31 +35,37 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.TestFactory
 {
     public class TestFactory : Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program>
     {
-        protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
-        {
-            builder.UseSetting("Self:BaseUrl", "http://localhost:8000");
-            builder.ConfigureServices(services =>
-            {
-                // Replace the default IHttpClientFactory with the scripted one so
-                // outbound HTTP from workflow nodes never leaves the test process.
-                services.RemoveAll<System.Net.Http.IHttpClientFactory>();
-                services.AddSingleton<System.Net.Http.IHttpClientFactory>(
-                    ScriptedHttpClientFactory.Responder(_ => new HttpResponseMessage(HttpStatusCode.OK)
-                    {
-                        Content = new StringContent("""{"reserved":1,"remaining":99}""",
-                            System.Text.Encoding.UTF8, "application/json")
-                    }));
-            });
-        }
+        public HttpClient Client { get; }
 
-        public HttpClient CreateTestClient() => CreateClient();
+        public TestFactory()
+        {
+            // NOTE: the ConfigureWebHost OVERRIDE does not work with .NET 10's deferred
+            // test host (server never starts); WithWebHostBuilder does. Use that pattern.
+            var derived = WithWebHostBuilder(builder =>
+            {
+                builder.UseSetting("Self:BaseUrl", "http://localhost:8000");
+                builder.ConfigureServices(services =>
+                {
+                    // Replace the default IHttpClientFactory with the scripted one so
+                    // outbound HTTP from workflow nodes never leaves the test process.
+                    services.RemoveAll<System.Net.Http.IHttpClientFactory>();
+                    services.AddSingleton<System.Net.Http.IHttpClientFactory>(
+                        ScriptedHttpClientFactory.Responder(_ => new HttpResponseMessage(HttpStatusCode.OK)
+                        {
+                            Content = new StringContent("""{"reserved":1,"remaining":99}""",
+                                System.Text.Encoding.UTF8, "application/json")
+                        }));
+                });
+            });
+            Client = derived.CreateClient();
+        }
     }
 
     private readonly HttpClient _client;
 
     public ApiIntegrationTests(TestFactory factory)
     {
-        _client = factory.CreateTestClient();
+        _client = factory.Client;
     }
 
     private static JsonObject TransformGraph() => new()

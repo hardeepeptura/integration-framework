@@ -1,0 +1,6 @@
+apiVersion: v2
+name: integration-framework
+description: Tray-style integration platform - ASP.NET Core workflow engine with SQL Server metadata store, HTTP + DB connectors, and a React Flow builder UI
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

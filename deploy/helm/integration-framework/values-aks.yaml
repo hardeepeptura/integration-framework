@@ -1,0 +1,33 @@
+# AKS profile. Recommended: push images to Azure Container Registry and set the
+# repositories below; store the metadata connection string in a Secret (or wire
+# Azure Key Vault via the Secrets Store CSI driver) instead of values.
+image:
+  apiRepository: youracr.azurecr.io/integration-api
+  frontendRepository: youracr.azurecr.io/integration-frontend
+  tag: latest
+  pullPolicy: IfNotPresent
+
+metadata:
+  # Preferred: create the secret once, out-of-band:
+  #   kubectl create secret generic integration-metadata \
+  #     --from-literal=connection-string='Server=...database.windows.net,1433;...'
+  existingSecret: integration-metadata
+  existingSecretKey: connection-string
+
+# Connector passwords for workflow db_query steps:
+#   kubectl create secret generic integration-secrets \
+#     --from-literal=mssql-password='...' --from-literal=postgres-password='...'
+extraEnv: []
+#  - name: MSSQL_PASSWORD
+#    valueFrom:
+#      secretKeyRef:
+#        name: integration-secrets
+#        key: mssql-password
+
+ingress:
+  enabled: true
+  className: nginx
+  host: integration.your-domain.com
+  tls:
+    enabled: true
+    secretName: integration-tls

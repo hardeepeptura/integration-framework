@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "integration-framework.name" . }}-api
+  labels:
+    {{- include "integration-framework.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicas }}
+  selector:
+    matchLabels:
+      {{- include "integration-framework.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        {{- include "integration-framework.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.image.apiRepository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: IF_ROLE
+              value: api
+            - name: METADATA_CONNECTION_STRING
+              {{- if .Values.metadata.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.metadata.existingSecret }}
+                  key: {{ .Values.metadata.existingSecretKey }}
+              {{- else }}
+              value: {{ include "integration-framework.metadataConnectionString" . | quote }}
+              {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}

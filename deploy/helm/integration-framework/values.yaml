@@ -1,0 +1,69 @@
+# Default values. NEVER put real passwords here - use an existing Kubernetes Secret
+# (metadata.existingSecret) or create the Secret out-of-band from env vars.
+
+image:
+  apiRepository: ghcr.io/your-org/integration-api
+  frontendRepository: ghcr.io/your-org/integration-frontend
+  # Prefer explicit tags; set pullPolicy Always for mutable tags like 'latest'
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Framework metadata store (SQL Server / Azure SQL).
+metadata:
+  connectionStringBuilder: >-
+    Server=your-server.database.windows.net,1433;Database=YourDb;User Id=youruser;Password=YourPassword;TrustServerCertificate=True
+  # Alternative: reference an existing Secret that contains a key 'connection-string'.
+  # It takes precedence over connectionStringBuilder.
+  existingSecret: ""
+  existingSecretKey: connection-string
+
+# Extra env vars for connector passwords (names must match each connection's
+# password_env). Values should come from a Secret you create out-of-band; when
+# using existingSecret for metadata you typically also mount connector secrets here.
+extraEnv: []
+#  - name: MSSQL_PASSWORD
+#    valueFrom:
+#      secretKeyRef:
+#        name: integration-secrets
+#        key: mssql-password
+
+api:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+# Scheduler must be single-replica (in-process scheduling); see deploy/README.
+worker:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 192Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+frontend:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+ingress:
+  enabled: false
+  className: nginx
+  host: integration.example.com
+  tls:
+    enabled: false
+    secretName: integration-tls
+
+nameOverride: ""

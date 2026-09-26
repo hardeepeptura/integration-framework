@@ -1,0 +1,59 @@
+# Local container stack without Kubernetes. Copy deploy/docker/.env.example to deploy/docker/.env
+# and fill in the SA password (or point METADATA_CONNECTION_STRING at your own SQL Server).
+name: integration-framework
+
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in deploy/docker/.env}
+    volumes:
+      - mssql-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"] # real readiness via /opt/mssql-tools; keep simple
+      interval: 10s
+      retries: 30
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      IF_ROLE: api
+      METADATA_CONNECTION_STRING: ${METADATA_CONNECTION_STRING:-Server=mssql,1433;Database=IntegrationFramework;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True}
+    env_file:
+      - path: docker/.env
+        required: false
+    depends_on:
+      mssql:
+        condition: service_started
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.backend
+    command: ["dotnet", "IntegrationFramework.Api.dll"] # same image; scheduler runs because IF_ROLE=worker
+    environment:
+      IF_ROLE: worker
+      METADATA_CONNECTION_STRING: ${METADATA_CONNECTION_STRING:-Server=mssql,1433;Database=IntegrationFramework;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True}
+    env_file:
+      - path: docker/.env
+        required: false
+    depends_on:
+      mssql:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.frontend
+    ports:
+      - "8080:8080"
+    depends_on:
+      - api
+
+volumes:
+  mssql-data:

@@ -1,0 +1,17 @@
+# Local kind/k3d profile. Build images locally, load them into the cluster, then:
+#   helm install integration deploy/helm/integration-framework -f values-kind.yaml
+image:
+  apiRepository: integration-api
+  frontendRepository: integration-frontend
+  tag: local
+  pullPolicy: IfNotPresent
+
+# Metadata store for local testing: run SQL Server in the cluster or point at an
+# external instance reachable from the cluster.
+metadata:
+  connectionStringBuilder: >-
+    Server=integration-mssql,1433;Database=IntegrationFramework;User Id=sa;Password=ChangeMe_Str0ng!;TrustServerCertificate=True
+  existingSecret: ""
+
+ingress:
+  enabled: false
