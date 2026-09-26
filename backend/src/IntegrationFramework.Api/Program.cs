@@ -12,6 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 // ----- Metadata store: SQL Server (or Azure SQL) when configured, InMemory otherwise -----
 var metadataConnectionString =
     builder.Configuration.GetConnectionString("Metadata")
+    ?? builder.Configuration["METADATA_CONNECTION_STRING"]
     ?? Environment.GetEnvironmentVariable("METADATA_CONNECTION_STRING");
 
 builder.Services.AddDbContext<MetadataDbContext>(options =>
@@ -41,8 +42,7 @@ builder.Services.AddSingleton<DemoCrmStore>();
 builder.Services.AddSingleton<DemoInventoryStore>();
 
 // ----- Scheduled triggers (worker role) -----
-// BISECT STEP 1: temporarily disabled to isolate TestServer startup failure.
-//builder.Services.AddHostedService<SchedulerBackgroundService>();
+builder.Services.AddHostedService<SchedulerBackgroundService>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -59,8 +59,6 @@ builder.Services.AddCors(options => options.AddPolicy("frontend", policy => poli
 var app = builder.Build();
 
 // ----- Initialize metadata store + seed demo content -----
-// BISECT STEP 2: temporarily disabled to isolate TestServer startup failure.
-if (false)
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<MetadataDbContext>();
@@ -85,5 +83,7 @@ using (var scope = app.Services.CreateScope())
 app.UseCors("frontend");
 app.MapControllers();
 app.MapGet("/", () => Results.Redirect("/health"));
+
+app.Run();
 
 public partial class Program { }

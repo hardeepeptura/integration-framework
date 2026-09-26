@@ -33,15 +33,21 @@ internal class ScriptedHttpClientFactory : IHttpClientFactory
 
 public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.TestFactory>
 {
-    public class TestFactory : Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program>
+    /// <summary>
+    /// Plain fixture (not a WebApplicationFactory subclass): a bare root factory plus a
+    /// derived factory created via WithWebHostBuilder - the only pattern that starts
+    /// reliably under .NET 10's deferred test host.
+    /// </summary>
+    public class TestFactory : IDisposable
     {
+        private readonly Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> _root = new();
+        private readonly Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> _derived;
+
         public HttpClient Client { get; }
 
         public TestFactory()
         {
-            // NOTE: the ConfigureWebHost OVERRIDE does not work with .NET 10's deferred
-            // test host (server never starts); WithWebHostBuilder does. Use that pattern.
-            var derived = WithWebHostBuilder(builder =>
+            _derived = _root.WithWebHostBuilder(builder =>
             {
                 builder.UseSetting("Self:BaseUrl", "http://localhost:8000");
                 builder.ConfigureServices(services =>
@@ -57,7 +63,14 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.TestFactory
                         }));
                 });
             });
-            Client = derived.CreateClient();
+            Client = _derived.CreateClient();
+        }
+
+        public void Dispose()
+        {
+            Client.Dispose();
+            _derived.Dispose();
+            _root.Dispose();
         }
     }
 
@@ -220,15 +233,25 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.TestFactory
         var created = await create.Content.ReadFromJsonAsync<JsonObject>();
         var id = created!["id"]!.GetValue<string>();
 
-        var authConfig = created!["authConfig"]!.AsObject();
+        // authConfig is returned as a (masked) JSON string - parse before inspecting.
+        var authConfig = JsonNode.Parse(created!["authConfig"]!.GetValue<string>())!.AsObject();
         Assert.Equal("IF_STUB_TOKEN_ENV", authConfig["token_env"]!.GetValue<string>());
         Assert.Equal("********", authConfig["token"]!.GetValue<string>());
 
         // Deterministic test-connection via the scripted HTTP factory (200 → success).
-        var test = await _client.PostAsync($"/api/connections/{id}/test", null);
-        Assert.Equal(HttpStatusCode.OK, test.StatusCode);
-        var testDto = await test.Content.ReadFromJsonAsync<JsonObject>();
-        Assert.True(testDto!["success"]!.GetValue<bool>());
+        // The bearer token resolves from an env var named in auth_config - set it first.
+        Environment.SetEnvironmentVariable("IF_STUB_TOKEN_ENV", "stub-token");
+        try
+        {
+            var test = await _client.PostAsync($"/api/connections/{id}/test", null);
+            Assert.Equal(HttpStatusCode.OK, test.StatusCode);
+            var testDto = await test.Content.ReadFromJsonAsync<JsonObject>();
+            Assert.True(testDto!["success"]!.GetValue<bool>(), testDto!["detail"]!.GetValue<string>());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("IF_STUB_TOKEN_ENV", null);
+        }
 
         var delete = await _client.DeleteAsync($"/api/connections/{id}");
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
