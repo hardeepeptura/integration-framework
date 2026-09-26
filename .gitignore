@@ -1,0 +1,21 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+artifacts/
+
+# Node / frontend
+node_modules/
+dist/
+*.local
+
+# Secrets and env
+.env
+.env.*
+*.env
+!**/.env.example
+
+# Logs
+*.log

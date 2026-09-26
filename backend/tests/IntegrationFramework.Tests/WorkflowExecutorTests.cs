@@ -106,13 +106,15 @@ public class WorkflowExecutorTests
 
         var highRun = await Executor.ExecuteAsync(workflow, JsonNode.Parse("""{"score":90}"""));
         Assert.Equal("success", highRun.Status);
-        Assert.Equal("high", JsonNode.Parse(highRun.OutputJson!)!["tier"]!.GetValue<string>());
-        // The last node executed in the high branch is "hi".
-        Assert.Contains(highRun.StepRuns, s => s.NodeId == "hi" && s.Status == "success");
+        // Branch nodes run only via the condition; run output is the last MAIN-sequence node
+        // (the condition itself), so the branch result is verified via the branch step's output.
+        var hiStep = highRun.StepRuns.Single(s => s.NodeId == "hi" && s.Status == "success");
+        Assert.Equal("high", JsonNode.Parse(hiStep.OutputJson!)!["tier"]!.GetValue<string>());
         Assert.DoesNotContain(highRun.StepRuns, s => s.NodeId == "lo" && s.Status == "success");
 
         var lowRun = await Executor.ExecuteAsync(workflow, JsonNode.Parse("""{"score":10}"""));
-        Assert.Equal("low", JsonNode.Parse(lowRun.OutputJson!)!["tier"]!.GetValue<string>());
+        var loStep = lowRun.StepRuns.Single(s => s.NodeId == "lo" && s.Status == "success");
+        Assert.Equal("low", JsonNode.Parse(loStep.OutputJson!)!["tier"]!.GetValue<string>());
         Assert.DoesNotContain(lowRun.StepRuns, s => s.NodeId == "hi" && s.Status == "success");
     }
 
