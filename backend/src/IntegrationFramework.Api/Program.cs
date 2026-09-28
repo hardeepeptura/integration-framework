@@ -65,7 +65,13 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<MetadataDbContext>();
     if (db.Database.IsSqlServer())
-        db.Database.Migrate();
+    {
+        // One migrator: the api role applies migrations; workers (same image) skip
+        // so concurrent startups don't race on __EFMigrationsHistory.
+        var role = builder.Configuration["IF_ROLE"] ?? "api";
+        if (role != "worker")
+            db.Database.Migrate();
+    }
     else
         db.Database.EnsureCreated();
 

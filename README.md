@@ -25,10 +25,12 @@ npm run dev                                            # http://localhost:5173
 
 A seeded sample workflow (webhook → transform → mock inventory reserve) ships ready to run.
 
-## Containers & Kubernetes
+## Containers, CI/CD & Kubernetes
 
-See [deploy/README.md](deploy/README.md) for the quick start and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
-for the full deployment process (tooling, Compose, kind, AKS, config reference, troubleshooting).
+CI runs build + tests on every push/PR; tagging `v*` publishes images to GHCR and cuts a GitHub
+Release (`.github/workflows/`). See [deploy/README.md](deploy/README.md) for the quick start and
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full deployment process (tooling, Compose, kind,
+AKS, config reference, troubleshooting). The api container applies EF Core migrations on startup.
 
 ## Testing
 

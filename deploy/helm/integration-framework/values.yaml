@@ -2,9 +2,9 @@
 # (metadata.existingSecret) or create the Secret out-of-band from env vars.
 
 image:
-  apiRepository: ghcr.io/your-org/integration-api
-  frontendRepository: ghcr.io/your-org/integration-frontend
-  # Prefer explicit tags; set pullPolicy Always for mutable tags like 'latest'
+  apiRepository: ghcr.io/hardeepeptura/integration-framework/backend
+  frontendRepository: ghcr.io/hardeepeptura/integration-framework/frontend
+  # Published per release tag (e.g. "0.2.0"). Set pullPolicy Always for mutable tags.
   tag: latest
   pullPolicy: IfNotPresent
 

@@ -34,7 +34,25 @@ docker compose up -d --build
 Services: `api` (engine API), `worker` (same image + `IF_ROLE=worker` → runs the scheduler),
 `frontend` (nginx SPA + `/api` proxy), `mssql` (metadata store, volume-backed).
 
-## 3. Kubernetes (Helm)
+## 3. CI/CD (GitHub Actions)
+
+- **CI** (`.github/workflows/ci.yml`) runs on every push to `main` and every PR: backend
+  build + full xUnit suite, frontend `tsc -b && vite build`.
+- **Release** (`.github/workflows/release.yml`) runs on `v*` tags (e.g. `git tag v0.2.0 && git push origin v0.2.0`):
+  test gate → build & push `backend` / `frontend` images to
+  `ghcr.io/hardeepeptura/integration-framework/{backend,frontend}` (tags: `0.2.0`, `0.2`, `latest`)
+  → creates the GitHub Release with auto-generated notes.
+  First-time setup: make the two GHCR packages public (repo → Packages → package settings →
+  Change visibility) if clusters should pull without auth.
+
+### Database migrations
+
+The SQL Server schema ships as an EF Core migration (`IntegrationFramework.Core/Migrations`),
+verified via `dotnet ef migrations script --idempotent`. The **api** container applies pending
+migrations on startup (`Database.Migrate()`); **worker** containers skip it so concurrent
+starts don't race on `__EFMigrationsHistory`. The Helm chart needs no migration job.
+
+## 4. Kubernetes (Helm)
 
 Prerequisites: docker, kubectl, helm installed locally (not currently installed on this
 machine — see "Tooling" below).
