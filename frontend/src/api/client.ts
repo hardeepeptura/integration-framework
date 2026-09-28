@@ -3,6 +3,8 @@ import type {
   ConnectionTestResult,
   Run,
   ValidationResult,
+  WebhookEvent,
+  WebhookTriggerResult,
   Workflow,
 } from './types'
 
@@ -65,4 +67,21 @@ export const api = {
     request<void>(`/api/connections/${id}`, { method: 'DELETE' }),
   testConnection: (id: string) =>
     request<ConnectionTestResult>(`/api/connections/${id}/test`, { method: 'POST' }),
+
+  // Webhooks (durable deliveries + simulate)
+  triggerWebhook: (workflowId: string, payload: unknown) =>
+    request<WebhookTriggerResult>(`/webhook/${workflowId}`, {
+      method: 'POST',
+      body: JSON.stringify(payload ?? {}),
+    }),
+  listWebhookEvents: (params?: { workflowId?: string; status?: string; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.workflowId) qs.set('workflowId', params.workflowId)
+    if (params?.status) qs.set('status', params.status)
+    qs.set('limit', String(params?.limit ?? 100))
+    return request<WebhookEvent[]>(`/api/webhook-events?${qs.toString()}`)
+  },
+  getWebhookEvent: (id: string) => request<WebhookEvent>(`/api/webhook-events/${id}`),
+  replayWebhookEvent: (id: string) =>
+    request<WebhookTriggerResult>(`/api/webhook-events/${id}/replay`, { method: 'POST' }),
 }

@@ -3,7 +3,7 @@
 ## How to run
 
 ```powershell
-# Full suite (must print: total: 78, failed: 0)
+# Full suite (must print: total: 94, failed: 0)
 $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
 dotnet test backend/IntegrationFramework.slnx --nologo
 
@@ -30,6 +30,9 @@ via config/parameter-binding units (no live databases).
 | `DbConnectorTests` | per-engine connection strings, default ports, password_env resolution errors, `:name → @pN` parameter binding, client factory |
 | `SchedulerPolicyTests` | schedule extraction from graph JSON, due computation |
 | `ApiIntegrationTests` | end-to-end through `WebApplicationFactory`: health, workflow CRUD + validate + run, webhook trigger, connections CRUD + masking + test-connection, run detail/rerun, demo systems |
+| `OAuth2TokenManagerTests` | client_credentials + refresh_token grants (form fields, env secrets), token caching, near-expiry refresh, failure surfaces |
+| `EntityMappingApplierTests` | field mapping ($./relative sources, defaults, transforms) + validation rules (type/required/length/range/pattern) |
+| `P0ApiTests` | entity-mapping CRUD + validate, mapping node in a run, OAuth2 connection test (masked secret, token acquisition), webhook event persistence + replay + rejections |
 | `MinimalFactoryReproTests` | guards the test-host startup pattern (see gotchas) |
 
 ## Verified end-to-end (live processes)
@@ -56,7 +59,7 @@ cd frontend; npm run build; npm run preview -- --port 4173
 ```
 
 Last verified 2026-09-26: suite 78/78; live webhook run success (reserved 3, remaining 97);
-UI + proxy 200.
+UI + proxy 200. Phase 2 (P0): suite grew to 94/94 (OAuth2, entity mappings, webhook durability).
 
 ## Gotchas learned here (do not re-learn the hard way)
 

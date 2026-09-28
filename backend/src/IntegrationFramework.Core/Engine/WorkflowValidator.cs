@@ -8,7 +8,7 @@ namespace IntegrationFramework.Core.Engine;
 public class WorkflowValidator(MetadataDbContext db)
 {
     public static readonly string[] KnownTypes =
-        ["trigger", "http_request", "db_query", "transform", "condition", "loop", "delay"];
+        ["trigger", "http_request", "db_query", "transform", "condition", "loop", "delay", "entity_mapping"];
 
     public async Task<List<string>> ValidateAsync(string graphJson, CancellationToken ct = default)
     {
@@ -56,6 +56,22 @@ public class WorkflowValidator(MetadataDbContext db)
             }
             if (!await db.Connections.AnyAsync(c => c.Id == gid, ct))
                 errors.Add($"Node '{nodeId}': connection '{raw}' does not exist.");
+        }
+
+        // Referenced entity mappings must exist.
+        var mappingRefs = graph.Nodes
+            .Where(n => n.Config.TryGetPropertyValue("mappingId", out var m) && m is not null)
+            .Select(n => (Id: n.Id, Raw: n.Config["mappingId"]!.ToJsonString().Trim('"')))
+            .ToList();
+        foreach (var (nodeId, raw) in mappingRefs)
+        {
+            if (!Guid.TryParse(raw, out var gid))
+            {
+                errors.Add($"Node '{nodeId}': mappingId '{raw}' is not a valid GUID.");
+                continue;
+            }
+            if (!await db.EntityMappings.AnyAsync(m => m.Id == gid, ct))
+                errors.Add($"Node '{nodeId}': entity mapping '{raw}' does not exist.");
         }
 
         // Referenced branch/body node ids must exist.
@@ -144,6 +160,9 @@ public class WorkflowValidator(MetadataDbContext db)
                 if (!node.Config.TryGetPropertyValue("seconds", out var sNode) ||
                     sNode is not JsonValue sVal || !sVal.TryGetValue<int>(out var secs) || secs < 0)
                     errors.Add($"Node '{node.Id}' (delay): requires non-negative integer 'seconds'.");
+                break;
+            case "entity_mapping":
+                _ = configString("mappingId");
                 break;
         }
     }

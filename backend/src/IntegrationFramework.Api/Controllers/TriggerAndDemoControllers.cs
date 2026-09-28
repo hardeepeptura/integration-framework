@@ -2,27 +2,44 @@ using System.Text.Json.Nodes;
 using IntegrationFramework.Api.Demo;
 using IntegrationFramework.Core.Data;
 using IntegrationFramework.Core.Engine;
+using IntegrationFramework.Core.Entities;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace IntegrationFramework.Api.Controllers;
 
-/// <summary>Public webhook trigger: POST /webhook/{workflowId} executes the workflow with the body as input.</summary>
+/// <summary>
+/// Public webhook trigger: POST /webhook/{workflowId} executes the workflow with the body as input.
+/// Every delivery is persisted BEFORE execution (durable inbox) and linked to its run afterwards,
+/// so failed or interrupted deliveries can be replayed from WebhookEventsController.
+/// </summary>
 [ApiController]
 public class WebhookController(MetadataDbContext db, WorkflowExecutor executor) : ControllerBase
 {
     [HttpPost("webhook/{workflowId:guid}")]
     public async Task<IActionResult> Post(Guid workflowId, [FromBody] JsonNode? body)
     {
+        // Persist the delivery first: never lose an inbound webhook, even if the
+        // workflow is missing/disabled or the process dies mid-run.
+        var webhookEvent = new WebhookEvent
+        {
+            WorkflowId = workflowId,
+            HeadersJson = RequestHeadersToJson(),
+            BodyJson = body?.ToJsonString()
+        };
+        db.WebhookEvents.Add(webhookEvent);
+        await db.SaveChangesAsync();
+
         var workflow = await db.Workflows.FindAsync([workflowId]);
-        if (workflow is null) return NotFound(new { error = "No workflow for this webhook URL." });
+        if (workflow is null)
+            return await RejectAsync(webhookEvent, NotFound(new { error = "No workflow for this webhook URL." }));
         if (!workflow.Enabled)
-            return Conflict(new { error = "Workflow is disabled." });
+            return await RejectAsync(webhookEvent, Conflict(new { error = "Workflow is disabled." }));
 
         var triggerGraph = WorkflowExecutor.ParseGraph(workflow.GraphJson);
         if (triggerGraph.Nodes[0].Type != "trigger" ||
             (triggerGraph.Nodes[0].Config["trigger"]?.ToJsonString().Trim('"') is not ("webhook" or "manual")))
-            return Conflict(new { error = "Workflow trigger is not a webhook." });
+            return await RejectAsync(webhookEvent, Conflict(new { error = "Workflow trigger is not a webhook." }));
 
         var env = new Dictionary<string, string>
         {
@@ -30,7 +47,37 @@ public class WebhookController(MetadataDbContext db, WorkflowExecutor executor) 
                 .GetRequiredService<IConfiguration>()["Self:BaseUrl"] ?? "http://localhost:8000"
         };
         var run = await executor.ExecuteAsync(workflow, body, env);
-        return Ok(new { runId = run.Id, status = run.Status, output = RunDto.From(run).Output, error = run.Error });
+
+        webhookEvent.Status = run.Status == "success" ? "succeeded" : "failed";
+        webhookEvent.RunId = run.Id;
+        webhookEvent.Error = run.Error;
+        await db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            eventId = webhookEvent.Id,
+            runId = run.Id,
+            status = run.Status,
+            output = RunDto.From(run).Output,
+            error = run.Error
+        });
+    }
+
+    private async Task<IActionResult> RejectAsync(WebhookEvent webhookEvent, IActionResult result)
+    {
+        webhookEvent.Status = "rejected";
+        webhookEvent.Error = "Workflow missing, disabled, or not webhook-triggered.";
+        await db.SaveChangesAsync();
+        return result;
+    }
+
+    private string RequestHeadersToJson()
+    {
+        var headers = new JsonObject();
+        foreach (var (name, values) in Request.Headers)
+            if (!name.StartsWith("X-Forwarded", StringComparison.OrdinalIgnoreCase))
+                headers[name] = values.ToString(); // StringValues joins with ", "
+        return headers.ToJsonString();
     }
 }
 

@@ -6,7 +6,7 @@ public class Connection
     public string Name { get; set; } = string.Empty;
     public string Kind { get; set; } = "http"; // http | db
     public string? BaseUrl { get; set; }
-    public string AuthType { get; set; } = "none"; // none | api_key | bearer | basic
+    public string AuthType { get; set; } = "none"; // none | api_key | bearer | basic | oauth2
     public string? AuthConfigJson { get; set; }
     public string? DbType { get; set; } // mssql | postgres | mysql (kind == db)
     public string? DbConfigJson { get; set; }

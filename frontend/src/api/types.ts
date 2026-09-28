@@ -62,7 +62,7 @@ export interface Connection {
   name: string
   kind: ConnectionKind
   baseUrl?: string
-  authType: 'none' | 'api_key' | 'bearer' | 'basic'
+  authType: 'none' | 'api_key' | 'bearer' | 'basic' | 'oauth2'
   authConfig?: Record<string, unknown> | null
   dbType?: DbType
   dbConfig?: Record<string, unknown> | null
@@ -77,4 +77,26 @@ export interface ConnectionTestResult {
 export interface ValidationResult {
   valid: boolean
   errors: string[]
+}
+
+export type WebhookEventStatus = 'received' | 'succeeded' | 'failed' | 'rejected'
+
+export interface WebhookEvent {
+  id: string
+  workflowId: string
+  status: WebhookEventStatus
+  runId?: string
+  error?: string
+  body?: unknown
+  headers?: unknown
+  receivedAt: string
+}
+
+/** Response of POST /webhook/{id} and POST /api/webhook-events/{id}/replay. */
+export interface WebhookTriggerResult {
+  eventId: string
+  runId: string
+  status: 'running' | 'success' | 'failed'
+  output?: unknown
+  error?: string
 }

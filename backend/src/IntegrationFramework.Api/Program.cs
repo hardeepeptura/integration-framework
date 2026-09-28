@@ -26,6 +26,7 @@ builder.Services.AddDbContext<MetadataDbContext>(options =>
 // ----- Engine -----
 builder.Services.AddHttpClient("workflow-http");
 builder.Services.AddSingleton<IDbClientFactory, DbClientFactory>();
+builder.Services.AddSingleton<OAuth2TokenManager>();
 builder.Services.AddScoped<IWorkflowNode, TriggerNode>();
 builder.Services.AddScoped<IWorkflowNode, HttpRequestNode>();
 builder.Services.AddScoped<IWorkflowNode, DbQueryNode>();
@@ -33,6 +34,7 @@ builder.Services.AddScoped<IWorkflowNode, TransformNode>();
 builder.Services.AddScoped<IWorkflowNode, ConditionNode>();
 builder.Services.AddScoped<IWorkflowNode, LoopNode>();
 builder.Services.AddScoped<IWorkflowNode, DelayNode>();
+builder.Services.AddScoped<IWorkflowNode, EntityMappingNode>();
 builder.Services.AddScoped<NodeRegistry>();
 builder.Services.AddScoped<WorkflowExecutor>();
 builder.Services.AddScoped<WorkflowValidator>();

@@ -13,7 +13,8 @@ namespace IntegrationFramework.Api.Controllers;
 public class ConnectionsController(
     MetadataDbContext db,
     IDbClientFactory dbClientFactory,
-    IHttpClientFactory httpClientFactory) : ControllerBase
+    IHttpClientFactory httpClientFactory,
+    OAuth2TokenManager oauth2Tokens) : ControllerBase
 {
     public class ConnectionRequest
     {
@@ -116,6 +117,24 @@ public class ConnectionsController(
                     IsQuery = true
                 }, ct);
                 return Ok(new ConnectionTestResultDto(true, $"Connected to {config.DbType} at {config.Host}."));
+            }
+
+            // OAuth2: prove the client can obtain an access token before probing the base URL.
+            if (connection.AuthType == "oauth2")
+            {
+                var token = await oauth2Tokens.GetAccessTokenAsync(connection, ct);
+                if (string.IsNullOrWhiteSpace(connection.BaseUrl))
+                    return Ok(new ConnectionTestResultDto(true, "OAuth2 token acquired."));
+
+                using var oauthProbe = new HttpRequestMessage(HttpMethod.Head, connection.BaseUrl);
+                oauthProbe.Headers.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                using var oauthClient = httpClientFactory.CreateClient("workflow-http");
+                oauthClient.Timeout = TimeSpan.FromSeconds(10);
+                using var oauthResponse = await oauthClient.SendAsync(oauthProbe, ct);
+                var oauthOk = (int)oauthResponse.StatusCode < 500;
+                return Ok(new ConnectionTestResultDto(oauthOk,
+                    $"OAuth2 token acquired; HTTP {(int)oauthResponse.StatusCode} {oauthResponse.ReasonPhrase} from {connection.BaseUrl}"));
             }
 
             // HTTP connection: apply auth and issue a HEAD (fallback GET) against the base URL.

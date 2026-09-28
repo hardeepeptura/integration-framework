@@ -109,6 +109,18 @@ public class HttpRequestNode(IHttpClientFactory httpClientFactory) : IWorkflowNo
         if (connection.Kind != "http")
             throw new NodeExecutionException(context.NodeId, $"Connection '{connection.Name}' is not an http connection.");
 
+        if (connection.AuthType == "oauth2")
+        {
+            // OAuth2 needs a token fetch/refresh round-trip, so it goes through the
+            // token manager (which also caches tokens per connection) instead of
+            // the static auth applier.
+            var tokenManager = context.Services.GetRequiredService<OAuth2TokenManager>();
+            var token = await tokenManager.GetAccessTokenAsync(connection, context.CancellationToken);
+            request.Headers.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            return;
+        }
+
         HttpAuthApplier.Apply(request, connection.AuthType, connection.AuthConfigJson);
     }
 }

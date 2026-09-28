@@ -53,3 +53,37 @@ public record RunDto(
 public record ValidationResultDto(bool Valid, IReadOnlyList<string> Errors);
 
 public record ConnectionTestResultDto(bool Success, string Detail);
+
+public record EntityMappingDto(
+    Guid Id, string Name, string? SourceSystem, string? TargetSystem,
+    JsonNode? Mapping, JsonNode? ValidationRules, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
+{
+    public static EntityMappingDto From(EntityMapping m) => new(
+        m.Id, m.Name, m.SourceSystem, m.TargetSystem,
+        ParseOrNull(m.MappingJson), ParseOrNull(m.ValidationRulesJson), m.CreatedAt, m.UpdatedAt);
+    private static JsonNode? ParseOrNull(string? json) =>
+        string.IsNullOrWhiteSpace(json) ? null : TryParse(json);
+    private static JsonNode? TryParse(string json)
+    {
+        try { return JsonNode.Parse(json); }
+        catch { return json; }
+    }
+}
+
+public record EntityMappingValidateResultDto(bool Valid, IReadOnlyList<string> Errors, JsonNode? Mapped);
+
+public record WebhookEventDto(
+    Guid Id, Guid WorkflowId, string Status, Guid? RunId, string? Error,
+    JsonNode? Body, JsonNode? Headers, DateTimeOffset ReceivedAt)
+{
+    public static WebhookEventDto From(WebhookEvent e) => new(
+        e.Id, e.WorkflowId, e.Status, e.RunId, e.Error,
+        ParseOrNull(e.BodyJson), ParseOrNull(e.HeadersJson), e.ReceivedAt);
+    private static JsonNode? ParseOrNull(string? json) =>
+        string.IsNullOrWhiteSpace(json) ? null : TryParse(json);
+    private static JsonNode? TryParse(string json)
+    {
+        try { return JsonNode.Parse(json); }
+        catch { return json; }
+    }
+}

@@ -32,8 +32,22 @@ for the full deployment process (tooling, Compose, kind, AKS, config reference, 
 
 ## Testing
 
-See [docs/TESTING.md](docs/TESTING.md) — suite layout, how to run (78 tests), the live E2E
+See [docs/TESTING.md](docs/TESTING.md) — suite layout, how to run (94 tests), the live E2E
 procedure, and platform gotchas.
+
+## Phase 2 features (P0)
+
+- **OAuth2 connections** — http connections support `authType: "oauth2"` with the
+  `client_credentials` and `refresh_token` grants. Tokens are fetched/cached per connection and
+  refreshed ahead of expiry; `client_secret` / `refresh_token` resolve from `*_env` references and
+  are masked in API responses. The connection test endpoint proves a token can be acquired.
+- **Entity mappings** — reusable field mappings between two systems with validation rules
+  (type/required/length/range/regex), stored in the metadata store and applied by the
+  `entity_mapping` workflow node. `POST /api/entity-mappings/{id}/validate` dry-runs a payload.
+- **Webhook durability** — every inbound webhook delivery is persisted before execution
+  (body + header snapshot, status, linked run). Failed/failed-to-process deliveries can be
+  replayed via `POST /api/webhook-events/{id}/replay`, and the Webhooks page in the UI can
+  simulate deliveries against any workflow.
 
 ## API surface
 
@@ -48,7 +62,12 @@ procedure, and platform gotchas.
 | GET/POST | `/api/connections` | List / create connections |
 | PUT/DELETE | `/api/connections/{id}` | Update / delete |
 | POST | `/api/connections/{id}/test` | Test HTTP auth or DB connectivity |
-| POST | `/webhook/{workflowId}` | Webhook trigger |
+| POST | `/webhook/{workflowId}` | Webhook trigger (persisted as a durable event) |
+| GET | `/api/webhook-events`, `/api/webhook-events/{id}` | Delivery history (filter by workflow/status) |
+| POST | `/api/webhook-events/{id}/replay` | Re-execute the stored delivery body |
+| GET/POST | `/api/entity-mappings` | List / create entity mappings |
+| PUT/DELETE | `/api/entity-mappings/{id}` | Update / delete |
+| POST | `/api/entity-mappings/{id}/validate` | Apply mapping + rules to a sample payload |
 | GET | `/health` | Liveness + metadata provider info |
 | — | `/demo/crm`, `/demo/inventory` | Mock systems for the sample workflow |
 
@@ -68,7 +87,9 @@ procedure, and platform gotchas.
 
 Array order is execution order; condition nodes route via `on_true`/`on_false` node lists; loop
 nodes iterate `body` over `$.`-referenced arrays. Step outputs resolve via `$.steps.<id>.<path>`,
-env vars via `$.env.<name>`, run input via `$.input.<path>`.
+env vars via `$.env.<name>`, run input via `$.input.<path>`. The `entity_mapping` node applies a
+stored entity mapping (field mappings + validation rules) to the run input or a `source` path and
+fails the step on any validation error.
 
 ## Secrets
 
