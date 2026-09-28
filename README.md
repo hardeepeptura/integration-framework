@@ -27,8 +27,13 @@ A seeded sample workflow (webhook → transform → mock inventory reserve) ship
 
 ## Containers & Kubernetes
 
-See [deploy/README.md](deploy/README.md) — Docker Compose stack (api + worker + frontend + mssql)
-and Helm chart with `values-kind.yaml` / `values-aks.yaml` profiles.
+See [deploy/README.md](deploy/README.md) for the quick start and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+for the full deployment process (tooling, Compose, kind, AKS, config reference, troubleshooting).
+
+## Testing
+
+See [docs/TESTING.md](docs/TESTING.md) — suite layout, how to run (78 tests), the live E2E
+procedure, and platform gotchas.
 
 ## API surface
 
