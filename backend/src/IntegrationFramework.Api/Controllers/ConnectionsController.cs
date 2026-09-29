@@ -46,9 +46,11 @@ public class ConnectionsController(
         var kind = request.Kind ?? "http";
         if (kind is not ("http" or "db"))
             return BadRequest(new { error = "Kind must be 'http' or 'db'." });
+        var dbConfig = UnwrapJson(request.DbConfig);
+        var authConfig = UnwrapJson(request.AuthConfig);
         if (kind == "db")
         {
-            var probe = ParseDbConfig(request.DbType, request.DbConfig);
+            var probe = ParseDbConfig(request.DbType, dbConfig);
             if (probe is not null) return BadRequest(new { error = probe });
         }
 
@@ -58,9 +60,9 @@ public class ConnectionsController(
             Kind = kind,
             BaseUrl = request.BaseUrl,
             AuthType = kind == "http" ? (request.AuthType ?? "none") : "none",
-            AuthConfigJson = request.AuthConfig?.ToJsonString(),
+            AuthConfigJson = authConfig?.ToJsonString(),
             DbType = kind == "db" ? request.DbType : null,
-            DbConfigJson = request.DbConfig?.ToJsonString()
+            DbConfigJson = dbConfig?.ToJsonString()
         };
         db.Connections.Add(connection);
         await db.SaveChangesAsync();
@@ -76,9 +78,9 @@ public class ConnectionsController(
         if (request.Name is not null) connection.Name = request.Name;
         if (request.BaseUrl is not null) connection.BaseUrl = request.BaseUrl;
         if (request.AuthType is not null && connection.Kind == "http") connection.AuthType = request.AuthType;
-        if (request.AuthConfig is not null) connection.AuthConfigJson = request.AuthConfig.ToJsonString();
+        if (UnwrapJson(request.AuthConfig) is not null) connection.AuthConfigJson = UnwrapJson(request.AuthConfig)!.ToJsonString();
         if (request.DbType is not null && connection.Kind == "db") connection.DbType = request.DbType;
-        if (request.DbConfig is not null) connection.DbConfigJson = request.DbConfig.ToJsonString();
+        if (UnwrapJson(request.DbConfig) is not null) connection.DbConfigJson = UnwrapJson(request.DbConfig)!.ToJsonString();
         await db.SaveChangesAsync();
         return Ok(ConnectionDto.From(connection));
     }
@@ -154,6 +156,18 @@ public class ConnectionsController(
         {
             return Ok(new ConnectionTestResultDto(false, ex.Message));
         }
+    }
+
+    /// <summary>Accepts config as a JSON object or as a JSON-encoded object string ('{"host": ...}').</summary>
+    private static JsonNode? UnwrapJson(JsonNode? node) =>
+        node is JsonValue val && val.TryGetValue<string>(out var s)
+            ? TryParseJson(s) ?? node
+            : node;
+
+    private static JsonNode? TryParseJson(string json)
+    {
+        try { return JsonNode.Parse(json); }
+        catch { return null; }
     }
 
     private static string? ParseDbConfig(string? dbType, JsonNode? dbConfig)
