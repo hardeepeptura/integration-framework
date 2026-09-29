@@ -106,7 +106,9 @@ public class ConnectionsController(
         {
             if (connection.Kind == "db")
             {
-                var probe = ParseDbConfig(connection.DbType, connection.DbConfigJson);
+                // DbConfigJson is stored JSON text; parse it to a node (the implicit
+                // string→JsonNode conversion would wrap it as a JSON string instead).
+                var probe = ParseDbConfig(connection.DbType, TryParseJson(connection.DbConfigJson));
                 if (probe is not null) return Ok(new ConnectionTestResultDto(false, probe));
 
                 var config = DbConfigHelper.Parse(connection.DbConfigJson);

@@ -66,4 +66,7 @@ ingress:
     enabled: false
     secretName: integration-tls
 
+# ClusterIP (use an ingress) or LoadBalancer (direct public IPs, AKS default path)
+serviceType: ClusterIP
+
 nameOverride: ""

@@ -283,6 +283,9 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.TestFactory
         var testDto = await test.Content.ReadFromJsonAsync<JsonObject>();
         Assert.False(testDto!["success"]!.GetValue<bool>()); // host unreachable / env unset → graceful failure
         Assert.False(string.IsNullOrEmpty(testDto["detail"]!.GetValue<string>()));
+        // The stored config must be parsed as an object — a JSON-string wrapping
+        // regression would surface exactly here as "db_config must be a JSON object.".
+        Assert.DoesNotContain("must be a JSON object", testDto["detail"]!.GetValue<string>());
     }
 
     [Fact]

@@ -5,7 +5,7 @@ metadata:
   labels:
     {{- include "integration-framework.labels" . | nindent 4 }}
 spec:
-  type: ClusterIP
+  type: {{ .Values.serviceType | default "ClusterIP" }}
   selector:
     {{- include "integration-framework.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: api
@@ -21,7 +21,7 @@ metadata:
   labels:
     {{- include "integration-framework.labels" . | nindent 4 }}
 spec:
-  type: ClusterIP
+  type: {{ .Values.serviceType | default "ClusterIP" }}
   selector:
     {{- include "integration-framework.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: frontend
