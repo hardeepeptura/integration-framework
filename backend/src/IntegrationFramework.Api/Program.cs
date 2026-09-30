@@ -178,6 +178,17 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// Behind TLS-terminating proxies (cluster ingress → frontend nginx → API),
+// reconstruct the original scheme so OIDC redirect_uri and cookies use https.
+var forwardedHeaders = new Microsoft.AspNetCore.Builder.ForwardedHeadersOptions
+{
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
+                     | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
+};
+forwardedHeaders.KnownNetworks.Clear();
+forwardedHeaders.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedHeaders);
+
 app.UseCors("frontend");
 app.UseAuthentication();
 app.UseAuthorization();
