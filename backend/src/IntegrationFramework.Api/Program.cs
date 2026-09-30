@@ -78,14 +78,18 @@ if (ssoEnabled)
             options.Cookie.HttpOnly = true;
             options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax;
             options.Cookie.SecurePolicy = Microsoft.AspNetCore.Http.CookieSecurePolicy.SameAsRequest;
-            options.ExpireTimeSpan = TimeSpan.FromHours(8);
+            // Match the legacy DevOpsAutomateHub session behavior: sliding cookie
+            // with a configurable timeout (SSO_SESSION_TIMEOUT_MINUTES, default 60).
+            var timeoutMinutes = 60;
+            if (int.TryParse(builder.Configuration["SSO_SESSION_TIMEOUT_MINUTES"], out var configuredTimeout) && configuredTimeout > 0)
+                timeoutMinutes = configuredTimeout;
+            options.ExpireTimeSpan = TimeSpan.FromMinutes(timeoutMinutes);
+            options.SlidingExpiration = true;
         })
         .AddOpenIdConnect(options =>
         {
             options.Authority = $"https://login.microsoftonline.com/{ssoTenantId}/v2.0";
             options.ClientId = ssoClientId;
-            options.ClientSecret = ssoClientSecret;
-            options.ResponseType = Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectResponseType.Code;
             options.CallbackPath = "/auth/callback";
             options.SaveTokens = true;
             options.Scope.Clear();
@@ -93,6 +97,44 @@ if (ssoEnabled)
             options.Scope.Add("profile");
             options.Scope.Add("email");
             options.SignInScheme = Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme;
+            // Match the legacy DevOpsAutomateHub login mechanism (OWIN OIDC):
+            // - no client secret configured → implicit id_token flow, same as the
+            //   existing corporate app registration (no secret to request/rotate)
+            // - with a secret → authorization code flow (more secure, preferred)
+            if (!string.IsNullOrWhiteSpace(ssoClientSecret))
+            {
+                options.ClientSecret = ssoClientSecret;
+                options.ResponseType = Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectResponseType.Code;
+            }
+            else
+            {
+                options.ResponseType = Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectResponseType.IdToken;
+            }
+            // Legacy parity (DevOpsAutomateHub): AJAX calls get a 401 instead of a
+            // cross-origin redirect to the identity provider, so XHR/fetch callers
+            // can handle the status code instead of dying on a CORS error.
+            options.Events.OnRedirectToIdentityProvider = context =>
+            {
+                if (string.Equals(context.Request.Headers["X-Requested-With"], "XMLHttpRequest",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    context.HandleResponse();
+                    context.Response.StatusCode = 401;
+                }
+                return Task.CompletedTask;
+            };
+            // Legacy parity: surface the corporate sign-in name (preferred_username)
+            // as ClaimTypes.Name so User.Identity.Name shows the user's UPN/email.
+            options.Events.OnTokenValidated = context =>
+            {
+                var preferredUsername = context.Principal?.FindFirst("preferred_username")?.Value;
+                if (!string.IsNullOrEmpty(preferredUsername) &&
+                    context.Principal?.Identity is System.Security.Claims.ClaimsIdentity identity)
+                {
+                    identity.AddClaim(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, preferredUsername));
+                }
+                return Task.CompletedTask;
+            };
         });
 }
 

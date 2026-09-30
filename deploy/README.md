@@ -93,6 +93,38 @@ kubectl -n integration create secret generic integration-secrets `
    (see file comments); install with `-f values-aks.yaml`.
 4. Install ingress-nginx + cert-manager if TLS is enabled.
 
+### SSO (corporate login via Microsoft Entra ID)
+
+The login mechanism mirrors the legacy DevOpsAutomateHub portal (`cloudopsautomated`):
+OIDC against `https://login.microsoftonline.com/{tenant}/v2.0` using the **same corporate
+app registration**, with a sliding cookie session. No client secret is required — the
+legacy app uses the implicit `id_token` flow. If `SSO_CLIENT_SECRET` is set, the API
+switches to the more secure authorization-code flow instead.
+
+Copied configuration (same values as the legacy portal's Web.config `ida:*` keys):
+
+| Setting | Value |
+|---|---|
+| Tenant ID | `adb48caa-0b14-4256-b178-a5e508c807f5` (CondecoSoftware/Eptura corporate tenant) |
+| Client ID | `f1fa82b5-7798-4d68-8bb6-cac54eb3ddeb` (DevOpsAutomateHub app registration) |
+| Redirect URI | `http://localhost:8080/auth/callback` (must be added to the app registration) |
+| Flow | implicit `id_token` (no secret) or authorization-code (with `SSO_CLIENT_SECRET`) |
+
+Local run with SSO enabled:
+
+```powershell
+$env:SSO_TENANT_ID = "adb48caa-0b14-4256-b178-a5e508c807f5"
+$env:SSO_CLIENT_ID = "f1fa82b5-7798-4d68-8bb6-cac54eb3ddeb"
+dotnet run --project src/IntegrationFramework.Api
+```
+
+Behavior matches the legacy portal: AJAX calls get `401` instead of a cross-origin
+redirect; `preferred_username` is shown as the signed-in name; session is sliding,
+`SSO_SESSION_TIMEOUT_MINUTES` (default 60).
+
+In Kubernetes, set `sso.enabled=true, sso.tenantId=..., sso.clientId=...` on the Helm
+release (client secret optional via `sso.existingSecret`).
+
 ### Scheduled triggers
 
 The worker Deployment is intentionally **single-replica** (`Recreate` strategy) — the
@@ -106,6 +138,9 @@ replace it with a Kubernetes CronJob hitting `POST /api/workflows/{id}/run`.
 | `METADATA_CONNECTION_STRING` | SQL Server / Azure SQL connection string for the metadata store | Compose / Helm |
 | `IF_ROLE` | `api` = API only (no scheduler); `worker` = scheduler on; unset = both (local dev) | Compose / Helm |
 | `<CONNECTION>_PASSWORD` env vars | Resolved for `db_query` steps; names come from each connection's `password_env` (e.g. `MSSQL_PASSWORD`) | env / K8s Secret |
+| `SSO_TENANT_ID` / `SSO_CLIENT_ID` | Enable corporate SSO (Entra ID) when both are set — see SSO section | Compose / Helm |
+| `SSO_CLIENT_SECRET` | Optional; enables authorization-code flow instead of implicit `id_token` | K8s Secret |
+| `SSO_SESSION_TIMEOUT_MINUTES` | Sliding cookie session timeout, default 60 | Compose / Helm |
 
 ## Tooling (this machine)
 

@@ -12,7 +12,7 @@ const BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? ''
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
     credentials: 'include',
     ...init,
   })
