@@ -120,6 +120,18 @@ if (ssoEnabled)
                 {
                     context.HandleResponse();
                     context.Response.StatusCode = 401;
+                    return Task.CompletedTask;
+                }
+                // Public traffic crosses TLS-terminating proxies that do not forward
+                // the original scheme, so the request (and redirect_uri) would be http.
+                // Force https for non-local hosts — matches the registered Entra
+                // redirect URI and keeps the id_token off plain-http hops.
+                if (context.ProtocolMessage?.RedirectUri is string redirectUri
+                    && redirectUri.StartsWith("http://", StringComparison.Ordinal)
+                    && !context.Request.Host.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                    && !context.Request.Host.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase))
+                {
+                    context.ProtocolMessage.RedirectUri = "https://" + redirectUri["http://".Length..];
                 }
                 return Task.CompletedTask;
             };
