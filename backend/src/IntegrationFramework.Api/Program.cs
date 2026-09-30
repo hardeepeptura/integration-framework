@@ -58,6 +58,54 @@ builder.Services.AddCors(options => options.AddPolicy("frontend", policy => poli
     .AllowAnyHeader()
     .AllowAnyMethod()));
 
+// ----- SSO (corporate Microsoft Entra ID) — enabled when configured, off otherwise -----
+var ssoTenantId = builder.Configuration["SSO_TENANT_ID"];
+var ssoClientId = builder.Configuration["SSO_CLIENT_ID"];
+var ssoClientSecret = builder.Configuration["SSO_CLIENT_SECRET"];
+var ssoEnabled = !string.IsNullOrWhiteSpace(ssoTenantId) && !string.IsNullOrWhiteSpace(ssoClientId);
+
+if (ssoEnabled)
+{
+    builder.Services
+        .AddAuthentication(options =>
+        {
+            options.DefaultScheme = Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme;
+            options.DefaultChallengeScheme = Microsoft.AspNetCore.Authentication.OpenIdConnect.OpenIdConnectDefaults.AuthenticationScheme;
+        })
+        .AddCookie(options =>
+        {
+            options.Cookie.Name = "neuro-eptura-auth";
+            options.Cookie.HttpOnly = true;
+            options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax;
+            options.Cookie.SecurePolicy = Microsoft.AspNetCore.Http.CookieSecurePolicy.SameAsRequest;
+            options.ExpireTimeSpan = TimeSpan.FromHours(8);
+        })
+        .AddOpenIdConnect(options =>
+        {
+            options.Authority = $"https://login.microsoftonline.com/{ssoTenantId}/v2.0";
+            options.ClientId = ssoClientId;
+            options.ClientSecret = ssoClientSecret;
+            options.ResponseType = Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectResponseType.Code;
+            options.CallbackPath = "/auth/callback";
+            options.SaveTokens = true;
+            options.Scope.Clear();
+            options.Scope.Add("openid");
+            options.Scope.Add("profile");
+            options.Scope.Add("email");
+            options.SignInScheme = Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme;
+        });
+}
+
+builder.Services.AddAuthorization(options =>
+{
+    // With SSO configured, everything requires an authenticated corporate user
+    // unless an endpoint opts out with [AllowAnonymous] (webhook, health, demo, auth).
+    if (ssoEnabled)
+        options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+            .RequireAuthenticatedUser()
+            .Build();
+});
+
 var app = builder.Build();
 
 // ----- Initialize metadata store + seed demo content -----
@@ -89,8 +137,10 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseCors("frontend");
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
-app.MapGet("/", () => Results.Redirect("/health"));
+app.MapGet("/", () => Results.Redirect("/health")).AllowAnonymous();
 
 app.Run();
 

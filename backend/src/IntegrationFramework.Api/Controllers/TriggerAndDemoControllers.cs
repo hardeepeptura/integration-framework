@@ -17,6 +17,7 @@ namespace IntegrationFramework.Api.Controllers;
 public class WebhookController(MetadataDbContext db, WorkflowExecutor executor) : ControllerBase
 {
     [HttpPost("webhook/{workflowId:guid}")]
+    [Microsoft.AspNetCore.Authorization.AllowAnonymous] // external systems call this
     public async Task<IActionResult> Post(Guid workflowId, [FromBody] JsonNode? body)
     {
         // Persist the delivery first: never lose an inbound webhook, even if the
@@ -86,6 +87,7 @@ public class WebhookController(MetadataDbContext db, WorkflowExecutor executor) 
 public class HealthController(MetadataDbContext db) : ControllerBase
 {
     [HttpGet("health")]
+    [Microsoft.AspNetCore.Authorization.AllowAnonymous] // liveness probes
     public async Task<IActionResult> Get()
     {
         var provider = db.Database.ProviderName;
@@ -97,6 +99,7 @@ public class HealthController(MetadataDbContext db) : ControllerBase
 // ----- Demo systems (mock "System A" CRM and "System B" Inventory) -----
 
 [ApiController]
+[Microsoft.AspNetCore.Authorization.AllowAnonymous] // mock systems for the sample workflow
 [Route("demo/crm")]
 public class DemoCrmController(DemoCrmStore store) : ControllerBase
 {
@@ -121,6 +124,7 @@ public class DemoCrmController(DemoCrmStore store) : ControllerBase
 }
 
 [ApiController]
+[Microsoft.AspNetCore.Authorization.AllowAnonymous]
 [Route("demo/inventory")]
 public class DemoInventoryController(DemoInventoryStore store) : ControllerBase
 {

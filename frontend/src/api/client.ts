@@ -13,9 +13,16 @@ const BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? ''
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     ...init,
   })
   if (!response.ok) {
+    // SSO: an unauthenticated API call redirects to the corporate login flow.
+    if (response.status === 401 && !path.startsWith('/auth/')) {
+      const returnUrl = `${window.location.pathname}${window.location.search}`
+      window.location.href = `${BASE_URL}/auth/login?returnUrl=${encodeURIComponent(returnUrl)}`
+      return new Promise<T>(() => {}) // navigation happens; keep the promise pending
+    }
     let detail = `${response.status} ${response.statusText}`
     try {
       const body = (await response.json()) as { error?: string; errors?: string[] }
@@ -28,6 +35,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (response.status === 204) return undefined as T
   return (await response.json()) as T
+}
+
+export interface SessionState {
+  authenticated: boolean
+  ssoEnabled: boolean
+  name?: string
+  email?: string
+}
+
+export const auth = {
+  me: () => request<SessionState>('/auth/me'),
+  signOut: () => {
+    // Full navigation: the backend clears the app cookie + Entra session, then
+    // lands back on "/" which reloads the SPA.
+    window.location.href = `${BASE_URL}/auth/logout`
+    return Promise.resolve()
+  },
+  signIn: (returnUrl?: string) => {
+    window.location.href = `${BASE_URL}/auth/login${returnUrl ? `?returnUrl=${encodeURIComponent(returnUrl)}` : ''}`
+  },
 }
 
 export const api = {

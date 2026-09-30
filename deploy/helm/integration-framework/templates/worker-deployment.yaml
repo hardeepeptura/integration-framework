@@ -37,6 +37,19 @@ spec:
               {{- else }}
               value: {{ include "integration-framework.metadataConnectionString" . | quote }}
               {{- end }}
+            {{- if .Values.sso.enabled }}
+            - name: SSO_TENANT_ID
+              value: {{ .Values.sso.tenantId | quote }}
+            - name: SSO_CLIENT_ID
+              value: {{ .Values.sso.clientId | quote }}
+            {{- if .Values.sso.existingSecret }}
+            - name: SSO_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.sso.existingSecret }}
+                  key: {{ .Values.sso.existingSecretKey }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

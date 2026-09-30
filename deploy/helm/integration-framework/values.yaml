@@ -66,6 +66,16 @@ ingress:
     enabled: false
     secretName: integration-tls
 
+# SSO (corporate Microsoft Entra ID). Disabled until enabled with real values.
+sso:
+  enabled: false
+  tenantId: ""
+  clientId: ""
+  # Secret with the app registration's client secret:
+  #   kubectl create secret generic integration-sso --from-literal=client-secret='...'
+  existingSecret: ""
+  existingSecretKey: client-secret
+
 # ClusterIP (use an ingress) or LoadBalancer (direct public IPs, AKS default path)
 serviceType: ClusterIP
 

@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom'
+import { auth, type SessionState } from './api/client'
 import BuilderPage from './pages/BuilderPage'
 import ConnectionsPage from './pages/ConnectionsPage'
 import RunsPage from './pages/RunsPage'
@@ -6,6 +8,15 @@ import WebhooksPage from './pages/WebhooksPage'
 import WorkflowsPage from './pages/WorkflowsPage'
 
 export default function App() {
+  const [session, setSession] = useState<SessionState>()
+
+  useEffect(() => {
+    void auth
+      .me()
+      .then(setSession)
+      .catch(() => setSession({ authenticated: false, ssoEnabled: false }))
+  }, [])
+
   return (
     <BrowserRouter>
       <div className="app-shell">
@@ -15,6 +26,23 @@ export default function App() {
           <Link to="/connections">Connections</Link>
           <Link to="/runs">Runs</Link>
           <Link to="/webhooks">Webhooks</Link>
+          {session?.ssoEnabled &&
+            (session.authenticated ? (
+              <span className="nav-user">
+                {session.name ?? session.email}
+                <button type="button" onClick={() => void auth.signOut()}>
+                  Sign out
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="primary"
+                onClick={() => auth.signIn(window.location.pathname)}
+              >
+                Sign in with corporate account
+              </button>
+            ))}
         </nav>
         <main className="app-main">
           <Routes>
