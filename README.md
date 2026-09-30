@@ -1,6 +1,6 @@
-# Integration Framework
+# Neuro-Eptura
 
-A Tray.ai-style integration platform: build workflows visually and move data between systems —
+An integration platform (Tray.ai-style): build workflows visually and move data between systems —
 HTTP APIs and direct database connections (SQL Server / Azure SQL, PostgreSQL, MySQL).
 
 - **Engine** — ASP.NET Core (.NET 10) workflow engine: node graph execution, per-step logging,

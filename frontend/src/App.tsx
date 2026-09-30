@@ -10,7 +10,7 @@ export default function App() {
     <BrowserRouter>
       <div className="app-shell">
         <nav className="app-nav">
-          <span className="brand">Integration Framework</span>
+          <span className="brand">Neuro-Eptura</span>
           <Link to="/workflows">Workflows</Link>
           <Link to="/connections">Connections</Link>
           <Link to="/runs">Runs</Link>

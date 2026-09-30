@@ -54,7 +54,7 @@ Frontend (built bundle + proxy path):
 
 ```powershell
 cd frontend; npm run build; npm run preview -- --port 4173
-# http://localhost:4173/            -> SPA (title "Integration Framework", #root, bundle script)
+# http://localhost:4173/            -> SPA (title "Neuro-Eptura", #root, bundle script)
 # http://localhost:4173/api/workflows -> proxies to :8000 and returns the seeded workflow
 ```
 

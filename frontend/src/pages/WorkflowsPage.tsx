@@ -3,10 +3,15 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Workflow } from '../api/types'
 
+const EMPTY_NEW = { name: '', description: '', triggerType: 'manual' as 'manual' | 'webhook' | 'schedule' }
+
 export default function WorkflowsPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [error, setError] = useState<string>()
   const [busyId, setBusyId] = useState<string>()
+  const [showCreate, setShowCreate] = useState(false)
+  const [newWf, setNewWf] = useState(EMPTY_NEW)
+  const [creating, setCreating] = useState(false)
   const navigate = useNavigate()
 
   const load = useCallback(async () => {
@@ -59,10 +64,69 @@ export default function WorkflowsPage() {
     }
   }
 
+  const create = async () => {
+    setError(undefined)
+    if (!newWf.name.trim()) {
+      setError('Workflow name is required.')
+      return
+    }
+    setCreating(true)
+    try {
+      const created = await api.createWorkflow({
+        name: newWf.name.trim(),
+        description: newWf.description.trim() || undefined,
+        graph: {
+          nodes: [
+            { id: 'trigger', type: 'trigger', config: { trigger: newWf.triggerType } },
+          ],
+        },
+      })
+      navigate(`/workflows/${created.id}/builder`)
+    } catch (e) {
+      setError(String(e))
+      setCreating(false)
+    }
+  }
+
   return (
     <div className="page">
       <h1>Workflows</h1>
       {error && <div className="error-text">{error}</div>}
+      <div className="toolbar-row">
+        <button type="button" className="primary" onClick={() => setShowCreate((s) => !s)}>
+          {showCreate ? 'Close' : '+ New workflow'}
+        </button>
+      </div>
+      {showCreate && (
+        <div style={{ maxWidth: 520, background: 'var(--panel)', padding: 20, borderRadius: 8, boxShadow: '0 1px 3px rgb(0 0 0 / 8%)', marginBottom: 20 }}>
+          <label>Name</label>
+          <input
+            value={newWf.name}
+            placeholder="e.g. CRM lead to Inventory reserve"
+            onChange={(e) => setNewWf((f) => ({ ...f, name: e.target.value }))}
+          />
+          <label>Description</label>
+          <input
+            value={newWf.description}
+            placeholder="What does this workflow do?"
+            onChange={(e) => setNewWf((f) => ({ ...f, description: e.target.value }))}
+          />
+          <label>Trigger type</label>
+          <select
+            value={newWf.triggerType}
+            onChange={(e) => setNewWf((f) => ({ ...f, triggerType: e.target.value as typeof newWf.triggerType }))}
+          >
+            <option value="manual">Manual</option>
+            <option value="webhook">Webhook</option>
+            <option value="schedule">Schedule</option>
+          </select>
+          <div style={{ marginTop: 16 }}>
+            <button type="button" className="primary" disabled={creating} onClick={() => void create()}>
+              {creating ? 'Creating…' : 'Create and open builder'}
+            </button>
+          </div>
+        </div>
+      )}
       <table className="data">
         <thead>
           <tr>
