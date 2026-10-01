@@ -106,7 +106,10 @@ if (ssoEnabled)
             options.Authority = $"https://login.microsoftonline.com/{ssoTenantId}/v2.0";
             options.ClientId = ssoClientId;
             options.CallbackPath = "/auth/callback";
-            options.SaveTokens = true;
+            // The app only needs the authenticated principal (session cookie);
+            // storing id/access tokens would inflate the cookie toward nginx's
+            // proxy-buffer limits and browser per-cookie size caps.
+            options.SaveTokens = false;
             options.Scope.Clear();
             options.Scope.Add("openid");
             options.Scope.Add("profile");
