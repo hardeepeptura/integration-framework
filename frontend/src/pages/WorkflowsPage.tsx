@@ -1,9 +1,38 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Workflow } from '../api/types'
 
 const EMPTY_NEW = { name: '', description: '', triggerType: 'manual' as 'manual' | 'webhook' | 'schedule' }
+
+const iconProps = {
+  viewBox: '0 0 24 24',
+  'aria-hidden': true as const,
+  width: 13,
+  height: 13,
+  style: { flexShrink: 0 },
+}
+const IconCode = () => (
+  <svg {...iconProps} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="m8 6-6 6 6 6M16 6l6 6-6 6" />
+  </svg>
+)
+const IconPlay = () => (
+  <svg {...iconProps} fill="currentColor" stroke="none">
+    <polygon points="6 3 21 12 6 21" />
+  </svg>
+)
+const IconPause = () => (
+  <svg {...iconProps} fill="currentColor" stroke="none">
+    <rect x="5" y="3" width="5" height="18" rx={1} />
+    <rect x="14" y="3" width="5" height="18" rx={1} />
+  </svg>
+)
+const IconTrash = () => (
+  <svg {...iconProps} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+  </svg>
+)
 
 export default function WorkflowsPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([])
@@ -134,7 +163,7 @@ export default function WorkflowsPage() {
             <th>Description</th>
             <th>Status</th>
             <th>Updated</th>
-            <th style={{ width: 340 }}></th>
+            <th style={{ width: 400 }}></th>
           </tr>
         </thead>
         <tbody>
@@ -149,18 +178,20 @@ export default function WorkflowsPage() {
               </td>
               <td>{new Date(wf.updatedAt).toLocaleString()}</td>
               <td>
-                <Link to={`/workflows/${wf.id}/builder`}>
-                  <button type="button">Open builder</button>
-                </Link>
-                <button type="button" className="primary" disabled={busyId === wf.id || !wf.enabled} onClick={() => void runNow(wf)}>
-                  Run now
-                </button>
-                <button type="button" disabled={busyId === wf.id} onClick={() => void toggle(wf)}>
-                  {wf.enabled ? 'Disable' : 'Enable'}
-                </button>
-                <button type="button" className="danger" disabled={busyId === wf.id} onClick={() => void remove(wf)}>
-                  Delete
-                </button>
+                <div className="row-actions">
+                  <button type="button" onClick={() => navigate(`/workflows/${wf.id}/builder`)}>
+                    <IconCode /> Open builder
+                  </button>
+                  <button type="button" className="primary" disabled={busyId === wf.id || !wf.enabled} onClick={() => void runNow(wf)}>
+                    <IconPlay /> Run now
+                  </button>
+                  <button type="button" disabled={busyId === wf.id} onClick={() => void toggle(wf)}>
+                    {wf.enabled ? <IconPause /> : <IconPlay />} {wf.enabled ? 'Disable' : 'Enable'}
+                  </button>
+                  <button type="button" className="danger" disabled={busyId === wf.id} onClick={() => void remove(wf)}>
+                    <IconTrash /> Delete
+                  </button>
+                </div>
               </td>
             </tr>
           ))}

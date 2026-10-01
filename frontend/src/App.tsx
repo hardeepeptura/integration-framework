@@ -28,20 +28,22 @@ export default function App() {
           <Link to="/webhooks">Webhooks</Link>
           {session?.ssoEnabled &&
             (session.authenticated ? (
-              <span className="nav-user">
-                {session.name ?? session.email}
+              <div className="nav-right">
+                <span className="nav-user">{session.name ?? session.email}</span>
                 <button type="button" onClick={() => void auth.signOut()}>
                   Sign out
                 </button>
-              </span>
+              </div>
             ) : (
-              <button
-                type="button"
-                className="primary"
-                onClick={() => auth.signIn(window.location.pathname)}
-              >
-                Sign in with corporate account
-              </button>
+              <div className="nav-right">
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => auth.signIn(window.location.pathname)}
+                >
+                  Sign in with corporate account
+                </button>
+              </div>
             ))}
         </nav>
         <main className="app-main">
