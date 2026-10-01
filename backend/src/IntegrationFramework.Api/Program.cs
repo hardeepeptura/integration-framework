@@ -5,7 +5,14 @@ using IntegrationFramework.Core.Data;
 using IntegrationFramework.Core.Engine;
 using IntegrationFramework.Core.Engine.Nodes;
 using IntegrationFramework.Worker;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using Microsoft.AspNetCore.DataProtection.Repositories;
+using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
+
+using System.Xml.Linq;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +29,14 @@ builder.Services.AddDbContext<MetadataDbContext>(options =>
     else
         options.UseInMemoryDatabase("integration-framework-dev");
 });
+
+// ----- DataProtection: share keys via the metadata store so both API replicas
+// can decrypt the OIDC state/correlation cookies (multi-replica SSO login) -----
+builder.Services.AddSingleton<IXmlRepository, SqlXmlRepository>();
+builder.Services.AddSingleton<IConfigureOptions<KeyManagementOptions>>(sp =>
+    new ConfigureOptions<KeyManagementOptions>(o => o.XmlRepository = sp.GetRequiredService<IXmlRepository>()));
+builder.Services.AddDataProtection()
+    .SetApplicationName("neuro-eptura");
 
 // ----- Engine -----
 builder.Services.AddHttpClient("workflow-http");
@@ -210,3 +225,33 @@ app.MapGet("/", () => Results.Redirect("/health")).AllowAnonymous();
 app.Run();
 
 public partial class Program { }
+
+/// <summary>
+/// Persists DataProtection key XML in the SQL metadata store so all API replicas
+/// share one key ring (required for multi-replica SSO logins: the OIDC state
+/// correlation cookie must decrypt on whichever pod receives the callback).
+/// </summary>
+public class SqlXmlRepository(IServiceProvider services) : IXmlRepository
+{
+    public IReadOnlyCollection<XElement> GetAllElements()
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MetadataDbContext>();
+        return [.. db.DataProtectionKeys
+            .OrderBy(k => k.FriendlyName)
+            .Select(k => XElement.Parse(k.Xml!))];
+    }
+
+    public void StoreElement(XElement element, string? friendlyName)
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MetadataDbContext>();
+        var xml = element.ToString(SaveOptions.DisableFormatting);
+        var existing = db.DataProtectionKeys.SingleOrDefault(k => k.FriendlyName == friendlyName);
+        if (existing is null)
+            db.DataProtectionKeys.Add(new DataProtectionKey { FriendlyName = friendlyName, Xml = xml });
+        else
+            existing.Xml = xml;
+        db.SaveChanges();
+    }
+}

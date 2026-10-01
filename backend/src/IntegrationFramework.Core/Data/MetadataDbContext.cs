@@ -1,10 +1,14 @@
 using IntegrationFramework.Core.Entities;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace IntegrationFramework.Core.Data;
 
-public class MetadataDbContext(DbContextOptions<MetadataDbContext> options) : DbContext(options)
+// IDataProtectionKeyContext: SSO state/cookies are encrypted with DataProtection
+// keys stored here so every API replica can decrypt them (multi-replica login).
+public class MetadataDbContext(DbContextOptions<MetadataDbContext> options) : DbContext(options), IDataProtectionKeyContext
 {
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
     public DbSet<Workflow> Workflows => Set<Workflow>();
     public DbSet<WorkflowRun> WorkflowRuns => Set<WorkflowRun>();
     public DbSet<StepRun> StepRuns => Set<StepRun>();
