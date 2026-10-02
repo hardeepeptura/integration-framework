@@ -20,6 +20,7 @@ const EMPTY_FORM = {
 export default function ConnectionsPage() {
   const [connections, setConnections] = useState<Connection[]>([])
   const [form, setForm] = useState(EMPTY_FORM)
+  const [formOpen, setFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<string>()
   const [error, setError] = useState<string>()
   const [testResults, setTestResults] = useState<Record<string, ConnectionTestResult | 'testing'>>({})
@@ -39,6 +40,14 @@ export default function ConnectionsPage() {
   const resetForm = () => {
     setForm(EMPTY_FORM)
     setEditingId(undefined)
+    setFormOpen(false)
+    setError(undefined)
+  }
+
+  const openCreate = () => {
+    setForm(EMPTY_FORM)
+    setEditingId(undefined)
+    setFormOpen(true)
     setError(undefined)
   }
 
@@ -101,6 +110,7 @@ export default function ConnectionsPage() {
       passwordEnv: typeof dbConfig['password_env'] === 'string' ? dbConfig['password_env'] : '',
       sslMode: typeof dbConfig['ssl_mode'] === 'string' ? dbConfig['ssl_mode'] : '',
     })
+    setFormOpen(true)
   }
 
   const remove = async (connection: Connection) => {
@@ -129,6 +139,13 @@ export default function ConnectionsPage() {
   return (
     <div className="page">
       <h1>Connections</h1>
+      {error && !formOpen && <div className="error-text">{error}</div>}
+
+      <div className="toolbar-row">
+        <button type="button" className="primary" onClick={openCreate}>
+          + New connection
+        </button>
+      </div>
 
       <table className="data">
         <thead>
@@ -169,78 +186,79 @@ export default function ConnectionsPage() {
           ))}
           {connections.length === 0 && (
             <tr>
-              <td colSpan={5}>No connections yet — add one below.</td>
+              <td colSpan={5}>No connections yet — add one with “New connection”.</td>
             </tr>
           )}
         </tbody>
       </table>
 
-      <h2 style={{ fontSize: 16, margin: '28px 0 8px' }}>{editingId ? 'Edit connection' : 'New connection'}</h2>
-      <div style={{ maxWidth: 520, background: 'var(--panel)', padding: 20, borderRadius: 8, boxShadow: '0 1px 3px rgb(0 0 0 / 8%)' }}>
-        <label>Name</label>
-        <input value={form.name} onChange={(e) => setField({ name: e.target.value })} />
-        <label>Kind</label>
-        <select value={form.kind} onChange={(e) => setField({ kind: e.target.value as Connection['kind'] })}>
-          <option value="http">HTTP</option>
-          <option value="db">Database</option>
-        </select>
+      {formOpen && (
+        <div className="modal-backdrop">
+          {/* Deliberately NOT closing on backdrop click: typed form data should not be lost by a stray click. */}
+          <div className="modal modal-form">
+            <h3>{editingId ? 'Edit connection' : 'New connection'}</h3>
+            <label>Name</label>
+            <input value={form.name} onChange={(e) => setField({ name: e.target.value })} />
+            <label>Kind</label>
+            <select value={form.kind} onChange={(e) => setField({ kind: e.target.value as Connection['kind'] })}>
+              <option value="http">HTTP</option>
+              <option value="db">Database</option>
+            </select>
 
-        {isDb ? (
-          <>
-            <label>Database type</label>
-            <select value={form.dbType} onChange={(e) => setField({ dbType: e.target.value as DbType })}>
-              <option value="mssql">SQL Server / Azure SQL</option>
-              <option value="postgres">PostgreSQL</option>
-              <option value="mysql">MySQL</option>
-            </select>
-            <label>Host</label>
-            <input value={form.host} placeholder="myserver.database.windows.net" onChange={(e) => setField({ host: e.target.value })} />
-            <label>Port (blank = default)</label>
-            <input value={form.port} placeholder="1433 / 5432 / 3306" onChange={(e) => setField({ port: e.target.value })} />
-            <label>Database</label>
-            <input value={form.database} onChange={(e) => setField({ database: e.target.value })} />
-            <label>User</label>
-            <input value={form.user} onChange={(e) => setField({ user: e.target.value })} />
-            <label>Password environment variable name (never the password itself)</label>
-            <input value={form.passwordEnv} placeholder="MY_DB_PASSWORD" onChange={(e) => setField({ passwordEnv: e.target.value })} />
-            <label>SSL mode (PostgreSQL/MySQL, optional)</label>
-            <input value={form.sslMode} placeholder="Require" onChange={(e) => setField({ sslMode: e.target.value })} />
-          </>
-        ) : (
-          <>
-            <label>Base URL</label>
-            <input value={form.baseUrl} placeholder="https://api.example.com" onChange={(e) => setField({ baseUrl: e.target.value })} />
-            <label>Auth type</label>
-            <select value={form.authType} onChange={(e) => setField({ authType: e.target.value as Connection['authType'] })}>
-              <option value="none">None</option>
-              <option value="api_key">API key header</option>
-              <option value="bearer">Bearer token</option>
-              <option value="basic">Basic</option>
-            </select>
-            {form.authType !== 'none' && (
+            {isDb ? (
               <>
-                <label>
-                  Auth config (JSON; secrets via *_env variable NAMES, e.g.{' '}
-                  {'{"token_env": "MY_TOKEN"}'})
-                </label>
-                <textarea value={form.authConfigJson} onChange={(e) => setField({ authConfigJson: e.target.value })} />
+                <label>Database type</label>
+                <select value={form.dbType} onChange={(e) => setField({ dbType: e.target.value as DbType })}>
+                  <option value="mssql">SQL Server / Azure SQL</option>
+                  <option value="postgres">PostgreSQL</option>
+                  <option value="mysql">MySQL</option>
+                </select>
+                <label>Host</label>
+                <input value={form.host} placeholder="myserver.database.windows.net" onChange={(e) => setField({ host: e.target.value })} />
+                <label>Port (blank = default)</label>
+                <input value={form.port} placeholder="1433 / 5432 / 3306" onChange={(e) => setField({ port: e.target.value })} />
+                <label>Database</label>
+                <input value={form.database} onChange={(e) => setField({ database: e.target.value })} />
+                <label>User</label>
+                <input value={form.user} onChange={(e) => setField({ user: e.target.value })} />
+                <label>Password environment variable name (never the password itself)</label>
+                <input value={form.passwordEnv} placeholder="MY_DB_PASSWORD" onChange={(e) => setField({ passwordEnv: e.target.value })} />
+                <label>SSL mode (PostgreSQL/MySQL, optional)</label>
+                <input value={form.sslMode} placeholder="Require" onChange={(e) => setField({ sslMode: e.target.value })} />
+              </>
+            ) : (
+              <>
+                <label>Base URL</label>
+                <input value={form.baseUrl} placeholder="https://api.example.com" onChange={(e) => setField({ baseUrl: e.target.value })} />
+                <label>Auth type</label>
+                <select value={form.authType} onChange={(e) => setField({ authType: e.target.value as Connection['authType'] })}>
+                  <option value="none">None</option>
+                  <option value="api_key">API key header</option>
+                  <option value="bearer">Bearer token</option>
+                  <option value="basic">Basic</option>
+                </select>
+                {form.authType !== 'none' && (
+                  <>
+                    <label>
+                      Auth config (JSON; secrets via *_env variable NAMES, e.g.{' '}
+                      {'{"token_env": "MY_TOKEN"}'})
+                    </label>
+                    <textarea value={form.authConfigJson} onChange={(e) => setField({ authConfigJson: e.target.value })} />
+                  </>
+                )}
               </>
             )}
-          </>
-        )}
 
-        {error && <div className="error-text">{error}</div>}
-        <div style={{ marginTop: 16 }}>
-          <button type="button" className="primary" onClick={() => void submit()}>
-            {editingId ? 'Save changes' : 'Create connection'}
-          </button>
-          {editingId && (
-            <button type="button" onClick={resetForm}>
-              Cancel
-            </button>
-          )}
+            {error && <div className="error-text">{error}</div>}
+            <div className="modal-actions">
+              <button type="button" onClick={resetForm}>Cancel</button>
+              <button type="button" className="primary" onClick={() => void submit()}>
+                {editingId ? 'Save changes' : 'Create connection'}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
