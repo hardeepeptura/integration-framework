@@ -107,3 +107,34 @@ label { display: block; font-size: 12px; font-weight: 600; color: #64748b; margi
 .step-row h4 { margin: 0 0 6px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
 .toolbar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
 .toolbar-row select { width: auto; }
+
+/* Dashboard */
+.kpi-row { display: flex; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
+.kpi-card { flex: 1; min-width: 150px; background: var(--panel); border-radius: 8px; padding: 14px 18px; box-shadow: 0 1px 3px rgb(0 0 0 / 8%); }
+.kpi-card .kpi-value { font-size: 26px; font-weight: 700; }
+.kpi-card .kpi-label { font-size: 12px; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em; }
+.kpi-card.ok .kpi-value { color: var(--ok); }
+.kpi-card.bad .kpi-value { color: var(--danger); }
+
+.chart { background: var(--panel); border-radius: 8px; padding: 16px 18px; box-shadow: 0 1px 3px rgb(0 0 0 / 8%); margin-bottom: 20px; }
+.chart h3 { margin: 0 0 12px; font-size: 14px; }
+.bars { display: flex; align-items: flex-end; gap: 5px; height: 160px; }
+.bar-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; min-width: 0; }
+.bar-stack { display: flex; flex-direction: column-reverse; justify-content: flex-start; height: 140px; border-radius: 4px 4px 0 0; overflow: hidden; background: #eef2f7; }
+.bar-seg { width: 100%; }
+.bar-seg-success { background: var(--ok); }
+.bar-seg-failed { background: var(--danger); }
+.bar-label { font-size: 10px; color: #64748b; text-align: center; margin-top: 4px; white-space: nowrap; overflow: hidden; }
+.chart-legend { display: flex; gap: 16px; font-size: 12px; color: #64748b; margin-top: 10px; }
+.legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
+
+/* Share modal */
+.modal-backdrop { position: fixed; inset: 0; background: rgb(15 23 42 / 45%); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal { background: var(--panel); border-radius: 10px; padding: 20px 22px; width: 480px; max-width: 92vw; box-shadow: 0 10px 40px rgb(0 0 0 / 25%); }
+.modal h3 { margin: 0 0 12px; font-size: 16px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.share-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.share-row:first-of-type { margin-top: 12px; }
+.share-row select { width: 120px; }
+.share-row .share-email { flex: 1; font-size: 14px; }
+.owner-chip { font-size: 12px; color: #64748b; }

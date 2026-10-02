@@ -1,11 +1,16 @@
 import type {
+  AppUser,
   Connection,
   ConnectionTestResult,
+  DashboardRange,
+  DashboardSummary,
   Run,
+  SharePermission,
   ValidationResult,
   WebhookEvent,
   WebhookTriggerResult,
   Workflow,
+  WorkflowShare,
 } from './types'
 
 const BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? ''
@@ -42,6 +47,8 @@ export interface SessionState {
   ssoEnabled: boolean
   name?: string
   email?: string
+  role?: 'admin' | 'contributor'
+  isAdmin?: boolean
 }
 
 export const auth = {
@@ -111,4 +118,25 @@ export const api = {
   getWebhookEvent: (id: string) => request<WebhookEvent>(`/api/webhook-events/${id}`),
   replayWebhookEvent: (id: string) =>
     request<WebhookTriggerResult>(`/api/webhook-events/${id}/replay`, { method: 'POST' }),
+
+  // Users and roles (admin only)
+  listUsers: () => request<AppUser[]>('/api/users'),
+  setUserRole: (id: string, role: 'admin' | 'contributor') =>
+    request<AppUser>(`/api/users/${id}/role`, { method: 'PUT', body: JSON.stringify({ role }) }),
+  deleteUser: (id: string) => request<void>(`/api/users/${id}`, { method: 'DELETE' }),
+
+  // Workflow sharing
+  listShares: (workflowId: string) =>
+    request<WorkflowShare[]>(`/api/workflows/${workflowId}/shares`),
+  upsertShare: (workflowId: string, email: string, permission: SharePermission) =>
+    request<WorkflowShare>(`/api/workflows/${workflowId}/shares`, {
+      method: 'PUT',
+      body: JSON.stringify({ email, permission }),
+    }),
+  removeShare: (workflowId: string, shareId: string) =>
+    request<void>(`/api/workflows/${workflowId}/shares/${shareId}`, { method: 'DELETE' }),
+
+  // Dashboard
+  dashboardSummary: (range: DashboardRange) =>
+    request<DashboardSummary>(`/api/dashboard/summary?range=${range}`),
 }

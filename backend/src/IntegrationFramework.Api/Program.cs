@@ -54,6 +54,10 @@ builder.Services.AddScoped<NodeRegistry>();
 builder.Services.AddScoped<WorkflowExecutor>();
 builder.Services.AddScoped<WorkflowValidator>();
 
+// ----- Users, roles and sharing -----
+builder.Services.AddScoped<IntegrationFramework.Api.Services.CurrentUserService>();
+builder.Services.AddScoped<IntegrationFramework.Api.Services.WorkflowAccessService>();
+
 // ----- Demo systems -----
 builder.Services.AddSingleton<DemoCrmStore>();
 builder.Services.AddSingleton<DemoInventoryStore>();

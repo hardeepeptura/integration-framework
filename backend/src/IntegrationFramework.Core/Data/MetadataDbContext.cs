@@ -15,6 +15,8 @@ public class MetadataDbContext(DbContextOptions<MetadataDbContext> options) : Db
     public DbSet<Connection> Connections => Set<Connection>();
     public DbSet<EntityMapping> EntityMappings => Set<EntityMapping>();
     public DbSet<WebhookEvent> WebhookEvents => Set<WebhookEvent>();
+    public DbSet<AppUser> AppUsers => Set<AppUser>();
+    public DbSet<WorkflowShare> WorkflowShares => Set<WorkflowShare>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -72,5 +74,29 @@ public class MetadataDbContext(DbContextOptions<MetadataDbContext> options) : Db
             e.HasIndex(w => w.WorkflowId);
             e.HasIndex(w => w.ReceivedAt);
         });
+
+        modelBuilder.Entity<AppUser>(e =>
+        {
+            e.HasKey(u => u.Id);
+            e.HasAlternateKey(u => u.Email);
+            e.Property(u => u.Email).HasMaxLength(320).IsRequired();
+            e.Property(u => u.DisplayName).HasMaxLength(200);
+            e.Property(u => u.Role).HasMaxLength(20).IsRequired();
+        });
+
+        modelBuilder.Entity<WorkflowShare>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.Property(s => s.Email).HasMaxLength(320).IsRequired();
+            e.Property(s => s.Permission).HasMaxLength(10).IsRequired();
+            e.HasOne(s => s.Workflow)
+                .WithMany(w => w.Shares)
+                .HasForeignKey(s => s.WorkflowId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // One grant per recipient per workflow.
+            e.HasIndex(s => new { s.WorkflowId, s.Email }).IsUnique();
+        });
+
+        modelBuilder.Entity<Workflow>(e => e.HasIndex(w => w.OwnerEmail));
     }
 }

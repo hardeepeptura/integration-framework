@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using IntegrationFramework.Api.Services;
 using IntegrationFramework.Core.Data;
 using IntegrationFramework.Core.Engine;
 using Microsoft.AspNetCore.Mvc;
@@ -8,14 +9,22 @@ namespace IntegrationFramework.Api.Controllers;
 
 [ApiController]
 [Route("api/runs")]
-public class RunsController(MetadataDbContext db, WorkflowExecutor executor) : ControllerBase
+public class RunsController(
+    MetadataDbContext db, WorkflowExecutor executor,
+    CurrentUserService currentUser, WorkflowAccessService access) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<RunDto>>> List(
         [FromQuery] Guid? workflowId, [FromQuery] int limit = 50)
     {
+        var user = await currentUser.ResolveAsync(User);
         var query = db.WorkflowRuns.AsNoTracking().AsQueryable();
         if (workflowId is not null) query = query.Where(r => r.WorkflowId == workflowId);
+        if (user is not null && !user.IsAdmin)
+        {
+            var visible = await access.VisibleWorkflowIdsAsync(user);
+            query = query.Where(r => visible.Contains(r.WorkflowId));
+        }
         var runs = await query
             .OrderByDescending(r => r.StartedAt)
             .Take(Math.Clamp(limit, 1, 500))
@@ -31,7 +40,13 @@ public class RunsController(MetadataDbContext db, WorkflowExecutor executor) : C
             .Include(r => r.StepRuns)
             .AsNoTracking()
             .FirstOrDefaultAsync(r => r.Id == id);
-        return run is null ? NotFound() : Ok(RunDto.From(run));
+        if (run is null) return NotFound();
+
+        var user = await currentUser.ResolveAsync(User);
+        var workflow = await db.Workflows.FindAsync([run.WorkflowId]);
+        if (workflow is not null && !await access.CanViewAsync(user, workflow))
+            return NotFound();
+        return Ok(RunDto.From(run));
     }
 
     [HttpPost("{id:guid}/rerun")]

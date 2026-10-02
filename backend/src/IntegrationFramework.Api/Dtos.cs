@@ -6,12 +6,40 @@ namespace IntegrationFramework.Api;
 
 public record WorkflowDto(
     Guid Id, string Name, string? Description, bool Enabled,
-    JsonNode? Graph, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
+    JsonNode? Graph, string? OwnerEmail, string? MyPermission, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
 {
-    public static WorkflowDto From(Workflow w) => new(
+    public static WorkflowDto From(Workflow w, string? myPermission = null) => new(
         w.Id, w.Name, w.Description, w.Enabled,
-        JsonNode.Parse(w.GraphJson), w.CreatedAt, w.UpdatedAt);
+        JsonNode.Parse(w.GraphJson), w.OwnerEmail, myPermission, w.CreatedAt, w.UpdatedAt);
 }
+
+public record UserDto(Guid Id, string Email, string? DisplayName, string Role, DateTimeOffset CreatedAt)
+{
+    public static UserDto From(AppUser u) => new(u.Id, u.Email, u.DisplayName, u.Role, u.CreatedAt);
+}
+
+public record WorkflowShareDto(Guid Id, string Email, string Permission, DateTimeOffset CreatedAt)
+{
+    public static WorkflowShareDto From(WorkflowShare s) => new(s.Id, s.Email, s.Permission, s.CreatedAt);
+}
+
+public record DashboardBucketDto(DateTimeOffset Start, DateTimeOffset End, int Total, int Success, int Failed);
+
+public record DashboardWorkflowDto(Guid WorkflowId, string Name, int Total, int Success, int Failed);
+
+public record DashboardSummaryDto(
+    string Range,
+    DateTimeOffset From,
+    DateTimeOffset To,
+    int WorkflowCount,
+    int TotalRuns,
+    int SuccessRuns,
+    int FailedRuns,
+    int RunningRuns,
+    double SuccessRate,
+    double FailureRate,
+    IReadOnlyList<DashboardBucketDto> Buckets,
+    IReadOnlyList<DashboardWorkflowDto> TopWorkflows);
 
 public record ConnectionDto(
     Guid Id, string Name, string Kind, string? BaseUrl, string AuthType, string? AuthConfig,

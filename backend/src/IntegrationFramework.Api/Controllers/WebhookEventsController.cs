@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using IntegrationFramework.Api.Services;
 using IntegrationFramework.Core.Data;
 using IntegrationFramework.Core.Engine;
 using Microsoft.AspNetCore.Mvc;
@@ -13,7 +14,8 @@ namespace IntegrationFramework.Api.Controllers;
 [ApiController]
 [Route("api/webhook-events")]
 public class WebhookEventsController(
-    MetadataDbContext db, WorkflowExecutor executor, IConfiguration configuration) : ControllerBase
+    MetadataDbContext db, WorkflowExecutor executor, IConfiguration configuration,
+    CurrentUserService currentUser, WorkflowAccessService access) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<WebhookEventDto>>> List(
@@ -22,6 +24,12 @@ public class WebhookEventsController(
         var query = db.WebhookEvents.AsNoTracking().OrderByDescending(e => e.ReceivedAt).AsQueryable();
         if (workflowId.HasValue) query = query.Where(e => e.WorkflowId == workflowId);
         if (!string.IsNullOrWhiteSpace(status)) query = query.Where(e => e.Status == status);
+        var user = await currentUser.ResolveAsync(User);
+        if (user is not null && !user.IsAdmin)
+        {
+            var visible = await access.VisibleWorkflowIdsAsync(user);
+            query = query.Where(e => visible.Contains(e.WorkflowId));
+        }
         query = query.Take(Math.Clamp(limit, 1, 500));
         return Ok((await query.ToListAsync()).Select(WebhookEventDto.From));
     }
@@ -43,6 +51,9 @@ public class WebhookEventsController(
         var workflow = await db.Workflows.FindAsync([webhookEvent.WorkflowId]);
         if (workflow is null)
             return Conflict(new { error = "The workflow for this event no longer exists." });
+        var user = await currentUser.ResolveAsync(User);
+        if (!await access.CanEditAsync(user, workflow))
+            return NotFound();
 
         JsonNode? body = null;
         if (!string.IsNullOrWhiteSpace(webhookEvent.BodyJson))

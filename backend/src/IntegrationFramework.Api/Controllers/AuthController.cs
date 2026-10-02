@@ -1,3 +1,4 @@
+using IntegrationFramework.Api.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -12,7 +13,7 @@ namespace IntegrationFramework.Api.Controllers;
 /// </summary>
 [ApiController]
 [AllowAnonymous]
-public class AuthController(IConfiguration configuration) : ControllerBase
+public class AuthController(IConfiguration configuration, CurrentUserService users) : ControllerBase
 {
     private readonly bool _ssoEnabled =
         !string.IsNullOrWhiteSpace(configuration["SSO_TENANT_ID"]) &&
@@ -28,7 +29,7 @@ public class AuthController(IConfiguration configuration) : ControllerBase
     }
 
     [HttpGet("auth/me")]
-    public IActionResult Me()
+    public async Task<IActionResult> Me()
     {
         if (!_ssoEnabled)
             return Ok(new { authenticated = false, ssoEnabled = false });
@@ -36,13 +37,17 @@ public class AuthController(IConfiguration configuration) : ControllerBase
         if (!(User.Identity?.IsAuthenticated ?? false))
             return Ok(new { authenticated = false, ssoEnabled = true });
 
+        var appUser = await users.ResolveAsync(User);
         return Ok(new
         {
             authenticated = true,
             ssoEnabled = true,
             name = User.Identity?.Name,
             email = User.FindFirst("preferred_username")?.Value
-                    ?? User.FindFirst("email")?.Value
+                    ?? User.FindFirst("email")?.Value,
+            // Platform role (admin | contributor) drives the Users page link and API authorizations.
+            role = appUser?.User.Role,
+            isAdmin = appUser?.IsAdmin ?? false
         });
     }
 

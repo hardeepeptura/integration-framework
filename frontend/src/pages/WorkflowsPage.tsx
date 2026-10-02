@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
-import type { Workflow } from '../api/types'
+import type { SharePermission, Workflow, WorkflowShare } from '../api/types'
 
 const EMPTY_NEW = { name: '', description: '', triggerType: 'manual' as 'manual' | 'webhook' | 'schedule' }
 
@@ -33,6 +33,14 @@ const IconTrash = () => (
     <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
   </svg>
 )
+const IconShare = () => (
+  <svg {...iconProps} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="18" cy="5" r="3" />
+    <circle cx="6" cy="12" r="3" />
+    <circle cx="18" cy="19" r="3" />
+    <path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" />
+  </svg>
+)
 
 export default function WorkflowsPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([])
@@ -41,6 +49,10 @@ export default function WorkflowsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [newWf, setNewWf] = useState(EMPTY_NEW)
   const [creating, setCreating] = useState(false)
+  const [shareWf, setShareWf] = useState<Workflow>()
+  const [shares, setShares] = useState<WorkflowShare[]>([])
+  const [shareEmail, setShareEmail] = useState('')
+  const [sharePerm, setSharePerm] = useState<SharePermission>('view')
   const navigate = useNavigate()
 
   const load = useCallback(async () => {
@@ -90,6 +102,52 @@ export default function WorkflowsPage() {
       setError(String(e))
     } finally {
       setBusyId(undefined)
+    }
+  }
+
+  const openShare = async (wf: Workflow) => {
+    setError(undefined)
+    setShareWf(wf)
+    setShareEmail('')
+    setSharePerm('view')
+    try {
+      setShares(await api.listShares(wf.id))
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const addShare = async () => {
+    if (!shareWf || !shareEmail.trim()) return
+    setError(undefined)
+    try {
+      await api.upsertShare(shareWf.id, shareEmail.trim(), sharePerm)
+      setShares(await api.listShares(shareWf.id))
+      setShareEmail('')
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const changeShare = async (share: WorkflowShare, permission: SharePermission) => {
+    if (!shareWf) return
+    setError(undefined)
+    try {
+      await api.upsertShare(shareWf.id, share.email, permission)
+      setShares(await api.listShares(shareWf.id))
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const removeShare = async (share: WorkflowShare) => {
+    if (!shareWf) return
+    setError(undefined)
+    try {
+      await api.removeShare(shareWf.id, share.id)
+      setShares(await api.listShares(shareWf.id))
+    } catch (e) {
+      setError(String(e))
     }
   }
 
@@ -162,46 +220,106 @@ export default function WorkflowsPage() {
             <th>Name</th>
             <th>Description</th>
             <th>Status</th>
+            <th>Owner</th>
             <th>Updated</th>
-            <th style={{ width: 400 }}></th>
+            <th style={{ width: 440 }}></th>
           </tr>
         </thead>
         <tbody>
-          {workflows.map((wf) => (
-            <tr key={wf.id}>
-              <td>{wf.name}</td>
-              <td>{wf.description}</td>
-              <td>
-                <span className={`badge ${wf.enabled ? 'enabled' : 'disabled'}`}>
-                  {wf.enabled ? 'enabled' : 'disabled'}
-                </span>
-              </td>
-              <td>{new Date(wf.updatedAt).toLocaleString()}</td>
-              <td>
-                <div className="row-actions">
-                  <button type="button" onClick={() => navigate(`/workflows/${wf.id}/builder`)}>
-                    <IconCode /> Open builder
-                  </button>
-                  <button type="button" className="primary" disabled={busyId === wf.id || !wf.enabled} onClick={() => void runNow(wf)}>
-                    <IconPlay /> Run now
-                  </button>
-                  <button type="button" disabled={busyId === wf.id} onClick={() => void toggle(wf)}>
-                    {wf.enabled ? <IconPause /> : <IconPlay />} {wf.enabled ? 'Disable' : 'Enable'}
-                  </button>
-                  <button type="button" className="danger" disabled={busyId === wf.id} onClick={() => void remove(wf)}>
-                    <IconTrash /> Delete
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {workflows.map((wf) => {
+            // myPermission null = SSO off (unrestricted, as before roles existed).
+            const canManage = wf.myPermission == null || wf.myPermission === 'manage'
+            const canEdit = canManage || wf.myPermission === 'edit'
+            return (
+              <tr key={wf.id}>
+                <td>{wf.name}</td>
+                <td>{wf.description}</td>
+                <td>
+                  <span className={`badge ${wf.enabled ? 'enabled' : 'disabled'}`}>
+                    {wf.enabled ? 'enabled' : 'disabled'}
+                  </span>
+                </td>
+                <td className="owner-chip">{wf.ownerEmail ?? '—'}</td>
+                <td>{new Date(wf.updatedAt).toLocaleString()}</td>
+                <td>
+                  <div className="row-actions">
+                    <button type="button" onClick={() => navigate(`/workflows/${wf.id}/builder`)}>
+                      <IconCode /> Open builder
+                    </button>
+                    {canEdit && (
+                      <button type="button" className="primary" disabled={busyId === wf.id || !wf.enabled} onClick={() => void runNow(wf)}>
+                        <IconPlay /> Run now
+                      </button>
+                    )}
+                    {canEdit && (
+                      <button type="button" disabled={busyId === wf.id} onClick={() => void toggle(wf)}>
+                        {wf.enabled ? <IconPause /> : <IconPlay />} {wf.enabled ? 'Disable' : 'Enable'}
+                      </button>
+                    )}
+                    {canManage && (
+                      <button type="button" disabled={busyId === wf.id} onClick={() => void openShare(wf)}>
+                        <IconShare /> Share
+                      </button>
+                    )}
+                    {canManage && (
+                      <button type="button" className="danger" disabled={busyId === wf.id} onClick={() => void remove(wf)}>
+                        <IconTrash /> Delete
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            )
+          })}
           {workflows.length === 0 && (
             <tr>
-              <td colSpan={5}>No workflows yet.</td>
+              <td colSpan={6}>No workflows yet.</td>
             </tr>
           )}
         </tbody>
       </table>
+
+      {shareWf && (
+        <div className="modal-backdrop" onClick={() => setShareWf(undefined)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Share “{shareWf.name}”</h3>
+            {error && <div className="error-text">{error}</div>}
+            <div className="share-row">
+              <input
+                style={{ flex: 1 }}
+                placeholder="colleague@eptura.com"
+                value={shareEmail}
+                onChange={(e) => setShareEmail(e.target.value)}
+              />
+              <select value={sharePerm} onChange={(e) => setSharePerm(e.target.value as SharePermission)}>
+                <option value="view">Can view</option>
+                <option value="edit">Can edit</option>
+              </select>
+              <button type="button" className="primary" onClick={() => void addShare()}>
+                Add
+              </button>
+            </div>
+            {shares.map((s) => (
+              <div className="share-row" key={s.id}>
+                <span className="share-email">{s.email}</span>
+                <select value={s.permission} onChange={(e) => void changeShare(s, e.target.value as SharePermission)}>
+                  <option value="view">Can view</option>
+                  <option value="edit">Can edit</option>
+                </select>
+                <button type="button" className="danger" onClick={() => void removeShare(s)}>
+                  Remove
+                </button>
+              </div>
+            ))}
+            {shares.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>Not shared with anyone yet.</p>}
+            <div className="modal-actions">
+              <button type="button" onClick={() => setShareWf(undefined)}>
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

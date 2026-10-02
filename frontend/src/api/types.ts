@@ -25,8 +25,63 @@ export interface Workflow {
   description?: string
   enabled: boolean
   graph: WorkflowGraph | null
+  ownerEmail?: string | null
+  /** Caller's effective permission: manage (owner/admin), edit, view; null = SSO off (unrestricted). */
+  myPermission?: 'manage' | 'edit' | 'view' | null
   createdAt: string
   updatedAt: string
+}
+
+export type UserRole = 'admin' | 'contributor'
+
+export interface AppUser {
+  id: string
+  email: string
+  displayName?: string | null
+  role: UserRole
+  createdAt: string
+}
+
+export type SharePermission = 'view' | 'edit'
+
+export interface WorkflowShare {
+  id: string
+  email: string
+  permission: SharePermission
+  createdAt: string
+}
+
+export interface DashboardBucket {
+  start: string
+  end: string
+  total: number
+  success: number
+  failed: number
+}
+
+export interface DashboardTopWorkflow {
+  workflowId: string
+  name: string
+  total: number
+  success: number
+  failed: number
+}
+
+export type DashboardRange = 'hour' | '24h' | '7d' | '30d' | '6m'
+
+export interface DashboardSummary {
+  range: DashboardRange
+  from: string
+  to: string
+  workflowCount: number
+  totalRuns: number
+  successRuns: number
+  failedRuns: number
+  runningRuns: number
+  successRate: number
+  failureRate: number
+  buckets: DashboardBucket[]
+  topWorkflows: DashboardTopWorkflow[]
 }
 
 export interface RunStep {
