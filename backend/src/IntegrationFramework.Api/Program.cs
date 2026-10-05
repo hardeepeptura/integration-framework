@@ -199,8 +199,9 @@ using (var scope = app.Services.CreateScope())
     else
         db.Database.EnsureCreated();
 
-    if (!db.Workflows.Any())
-    {
+    // Seed the sample workflows by name so upgrades add new samples to
+    // installations that already have data.
+    if (!db.Workflows.Any(w => w.Name == WorkflowSeeder.SampleWorkflowName))
         db.Workflows.Add(new IntegrationFramework.Core.Entities.Workflow
         {
             Name = WorkflowSeeder.SampleWorkflowName,
@@ -208,8 +209,15 @@ using (var scope = app.Services.CreateScope())
             GraphJson = WorkflowSeeder.BuildSampleGraph(),
             Enabled = true
         });
-        db.SaveChanges();
-    }
+    if (!db.Workflows.Any(w => w.Name == WorkflowSeeder.ApiToApiWorkflowName))
+        db.Workflows.Add(new IntegrationFramework.Core.Entities.Workflow
+        {
+            Name = WorkflowSeeder.ApiToApiWorkflowName,
+            Description = "API to API: manual trigger → GET leads from System A (demo CRM) → loop over leads → map each lead → POST a kit reservation to System B (demo Inventory). Click Run now to execute.",
+            GraphJson = WorkflowSeeder.BuildApiToApiGraph(),
+            Enabled = true
+        });
+    db.SaveChanges();
 }
 
 // Behind TLS-terminating proxies (cluster ingress → frontend nginx → API),

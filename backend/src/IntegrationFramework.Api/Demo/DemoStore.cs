@@ -8,6 +8,19 @@ public class DemoCrmStore
     private readonly Lock _lock = new();
     private readonly List<JsonObject> _leads = [];
 
+    public DemoCrmStore()
+    {
+        // One lead so the seeded API-to-API example has data to pull on a fresh install.
+        _leads.Add(new JsonObject
+        {
+            ["id"] = Guid.NewGuid().ToString("N")[..8],
+            ["name"] = "Ada Lovelace",
+            ["company"] = "Eptura",
+            ["email"] = "ada@example.com",
+            ["createdAt"] = DateTimeOffset.UtcNow.ToString("O")
+        });
+    }
+
     public JsonObject[] List()
     {
         lock (_lock) { return [.. _leads.Select(l => (JsonObject)l.DeepClone())]; }
