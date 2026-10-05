@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using IntegrationFramework.Api.Demo;
+using Microsoft.AspNetCore.Authorization;
 using IntegrationFramework.Core.Data;
 using IntegrationFramework.Core.Engine;
 using IntegrationFramework.Core.Entities;
@@ -123,8 +124,61 @@ public class DemoCrmController(DemoCrmStore store) : ControllerBase
     public IActionResult Reset() { store.Reset(); return NoContent(); }
 }
 
+// ----- Demo OAuth2 authorization server (token endpoint) + Bearer-secured API -----
+
+/// <summary>
+/// Mock OAuth2 token endpoint for demo workflows: client_credentials grant for
+/// the fake demo client. Rejects wrong credentials like a real authorization server.
+/// </summary>
 [ApiController]
-[Microsoft.AspNetCore.Authorization.AllowAnonymous]
+[AllowAnonymous] // mock authorization server for the demo workflows
+[Route("demo/oauth2")]
+public class DemoOAuthController(DemoOAuthStore store) : ControllerBase
+{
+    [HttpPost("token")]
+    public IActionResult Token(
+        [FromForm] string? grant_type, [FromForm] string? client_id,
+        [FromForm] string? client_secret, [FromForm] string? scope)
+    {
+        if (grant_type != "client_credentials")
+            return BadRequest(new { error = "unsupported_grant_type", error_description = "Only client_credentials is supported by the demo server." });
+        try
+        {
+            return Ok(store.IssueToken(client_id ?? string.Empty, client_secret ?? string.Empty, scope));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = "invalid_client", error_description = ex.Message });
+        }
+    }
+
+    [HttpPost("reset")]
+    public IActionResult Reset() { store.Reset(); return NoContent(); }
+}
+
+/// <summary>
+/// Bearer-secured demo API: 401 without a token issued by the demo authorization
+/// server. This is the "protected System A" that OAuth2 demo workflows pull from.
+/// </summary>
+[ApiController]
+[AllowAnonymous] // auth is enforced by the demo bearer check itself
+[Route("demo/secure")]
+public class DemoSecureApiController(DemoOAuthStore store) : ControllerBase
+{
+    [HttpGet("orders")]
+    public IActionResult Orders()
+    {
+        var authorization = Request.Headers.Authorization.ToString();
+        var token = authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? authorization["Bearer ".Length..].Trim()
+            : null;
+        if (!store.IsValid(token))
+            return Unauthorized(new { error = "missing or invalid bearer token", hint = "POST /demo/oauth2/token (demo-client / demo-secret) first" });
+        return Ok(store.Orders());
+    }
+}
+
+[Microsoft.AspNetCore.Authorization.AllowAnonymous] // mock systems for the sample workflow
 [Route("demo/inventory")]
 public class DemoInventoryController(DemoInventoryStore store) : ControllerBase
 {

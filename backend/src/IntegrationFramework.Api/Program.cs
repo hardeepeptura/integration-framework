@@ -61,6 +61,7 @@ builder.Services.AddScoped<IntegrationFramework.Api.Services.WorkflowAccessServi
 // ----- Demo systems -----
 builder.Services.AddSingleton<DemoCrmStore>();
 builder.Services.AddSingleton<DemoInventoryStore>();
+builder.Services.AddSingleton<DemoOAuthStore>();
 
 // ----- Scheduled triggers (worker role) -----
 builder.Services.AddHostedService<SchedulerBackgroundService>();
@@ -215,6 +216,24 @@ using (var scope = app.Services.CreateScope())
             Name = WorkflowSeeder.ApiToApiWorkflowName,
             Description = "API to API: manual trigger → GET leads from System A (demo CRM) → loop over leads → map each lead → POST a kit reservation to System B (demo Inventory). Click Run now to execute.",
             GraphJson = WorkflowSeeder.BuildApiToApiGraph(),
+            Enabled = true
+        });
+
+    // Seed the OAuth2 demo connection first (the workflow's fetch node references
+    // it by connectionId), then the OAuth2 example workflow.
+    var oauthConnection = db.Connections.FirstOrDefault(c => c.Name == WorkflowSeeder.OAuthConnectionName);
+    if (oauthConnection is null)
+    {
+        oauthConnection = WorkflowSeeder.BuildOAuthDemoConnection();
+        db.Connections.Add(oauthConnection);
+        db.SaveChanges();
+    }
+    if (!db.Workflows.Any(w => w.Name == WorkflowSeeder.OAuthApiWorkflowName))
+        db.Workflows.Add(new IntegrationFramework.Core.Entities.Workflow
+        {
+            Name = WorkflowSeeder.OAuthApiWorkflowName,
+            Description = "OAuth2: manual trigger → the engine fetches a client-credentials token via the seeded Demo OAuth2 API connection → GET orders from the Bearer-secured demo API → loop → map → POST reserve to demo Inventory. Click Run now to execute.",
+            GraphJson = WorkflowSeeder.BuildOAuthApiGraph(oauthConnection.Id),
             Enabled = true
         });
     db.SaveChanges();
