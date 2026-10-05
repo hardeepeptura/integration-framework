@@ -8,6 +8,13 @@ const EMPTY_FORM = {
   baseUrl: '',
   authType: 'none' as Connection['authType'],
   authConfigJson: '{}',
+  // OAuth2 (structured form; secrets only ever as *_env variable names)
+  grantType: 'client_credentials' as 'client_credentials' | 'refresh_token',
+  tokenUrl: '',
+  clientId: '',
+  clientSecretEnv: '',
+  scope: '',
+  refreshTokenEnv: '',
   dbType: 'mssql' as DbType,
   host: '',
   port: '',
@@ -53,15 +60,38 @@ export default function ConnectionsPage() {
 
   const submit = async () => {
     setError(undefined)
+    const isDb = form.kind === 'db'
+    const isOauth2 = !isDb && form.authType === 'oauth2'
+
     let authConfig: unknown
-    try {
-      authConfig = JSON.parse(form.authConfigJson)
-    } catch {
-      setError('Auth config is not valid JSON.')
-      return
+    if (isOauth2) {
+      if (!form.tokenUrl.trim() || !form.clientId.trim()) {
+        setError('OAuth2 needs a token URL and a client ID.')
+        return
+      }
+      if (form.grantType === 'refresh_token' && !form.refreshTokenEnv.trim()) {
+        setError('The refresh_token grant needs a refresh token environment variable name.')
+        return
+      }
+      authConfig = {
+        grant_type: form.grantType,
+        token_url: form.tokenUrl.trim(),
+        client_id: form.clientId.trim(),
+        ...(form.clientSecretEnv.trim() ? { client_secret_env: form.clientSecretEnv.trim() } : {}),
+        ...(form.grantType === 'client_credentials' && form.scope.trim()
+          ? { scope: form.scope.trim() }
+          : {}),
+        ...(form.grantType === 'refresh_token' ? { refresh_token_env: form.refreshTokenEnv.trim() } : {}),
+      }
+    } else {
+      try {
+        authConfig = JSON.parse(form.authConfigJson)
+      } catch {
+        setError('Auth config is not valid JSON.')
+        return
+      }
     }
 
-    const isDb = form.kind === 'db'
     const body: Partial<Connection> = {
       name: form.name,
       kind: form.kind,
@@ -96,12 +126,20 @@ export default function ConnectionsPage() {
     setEditingId(connection.id)
     setError(undefined)
     const dbConfig = (connection.dbConfig ?? {}) as Record<string, unknown>
+    const authConfig = (connection.authConfig ?? {}) as Record<string, unknown>
+    const str = (v: unknown) => (typeof v === 'string' ? v : '')
     setForm({
       name: connection.name,
       kind: connection.kind,
       baseUrl: connection.baseUrl ?? '',
       authType: connection.authType,
-      authConfigJson: JSON.stringify(connection.authConfig ?? {}, null, 2),
+      authConfigJson: JSON.stringify(authConfig, null, 2),
+      grantType: str(authConfig['grant_type']) === 'refresh_token' ? 'refresh_token' : 'client_credentials',
+      tokenUrl: str(authConfig['token_url']),
+      clientId: str(authConfig['client_id']),
+      clientSecretEnv: str(authConfig['client_secret_env']),
+      scope: str(authConfig['scope']),
+      refreshTokenEnv: str(authConfig['refresh_token_env']),
       dbType: connection.dbType ?? 'mssql',
       host: typeof dbConfig['host'] === 'string' ? dbConfig['host'] : '',
       port: dbConfig['port'] !== undefined ? String(dbConfig['port']) : '',
@@ -236,8 +274,57 @@ export default function ConnectionsPage() {
                   <option value="api_key">API key header</option>
                   <option value="bearer">Bearer token</option>
                   <option value="basic">Basic</option>
+                  <option value="oauth2">OAuth2 (client credentials / refresh token)</option>
                 </select>
-                {form.authType !== 'none' && (
+                {form.authType === 'oauth2' ? (
+                  <>
+                    <label>Grant type</label>
+                    <select
+                      value={form.grantType}
+                      onChange={(e) => setField({ grantType: e.target.value as typeof EMPTY_FORM.grantType })}
+                    >
+                      <option value="client_credentials">Client credentials (server to server)</option>
+                      <option value="refresh_token">Refresh token</option>
+                    </select>
+                    <label>Token URL</label>
+                    <input
+                      value={form.tokenUrl}
+                      placeholder="https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
+                      onChange={(e) => setField({ tokenUrl: e.target.value })}
+                    />
+                    <label>Client ID</label>
+                    <input
+                      value={form.clientId}
+                      placeholder="00000000-0000-0000-0000-000000000000"
+                      onChange={(e) => setField({ clientId: e.target.value })}
+                    />
+                    <label>Client secret environment variable name (never the secret itself)</label>
+                    <input
+                      value={form.clientSecretEnv}
+                      placeholder="MY_OAUTH_CLIENT_SECRET"
+                      onChange={(e) => setField({ clientSecretEnv: e.target.value })}
+                    />
+                    {form.grantType === 'client_credentials' ? (
+                      <>
+                        <label>Scope (optional)</label>
+                        <input
+                          value={form.scope}
+                          placeholder="https://api.example.com/.default"
+                          onChange={(e) => setField({ scope: e.target.value })}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <label>Refresh token environment variable name (never the token itself)</label>
+                        <input
+                          value={form.refreshTokenEnv}
+                          placeholder="MY_OAUTH_REFRESH_TOKEN"
+                          onChange={(e) => setField({ refreshTokenEnv: e.target.value })}
+                        />
+                      </>
+                    )}
+                  </>
+                ) : form.authType !== 'none' ? (
                   <>
                     <label>
                       Auth config (JSON; secrets via *_env variable NAMES, e.g.{' '}
@@ -245,7 +332,7 @@ export default function ConnectionsPage() {
                     </label>
                     <textarea value={form.authConfigJson} onChange={(e) => setField({ authConfigJson: e.target.value })} />
                   </>
-                )}
+                ) : null}
               </>
             )}
 
