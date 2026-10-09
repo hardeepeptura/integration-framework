@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, NO_PROJECT } from '../api/client'
 import type { Project, SharePermission, Workflow, WorkflowShare } from '../api/types'
@@ -60,6 +60,7 @@ export default function WorkflowsPage() {
   const [sharePerm, setSharePerm] = useState<SharePermission>('view')
   const [projects, setProjects] = useState<Project[]>([])
   const [projectFilter, setProjectFilter] = useState('') // '' = all, NO_PROJECT = unassigned
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const navigate = useNavigate()
 
   const load = useCallback(async () => {
@@ -80,6 +81,25 @@ export default function WorkflowsPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  // Group the visible workflows by project (assigned projects first, then
+  // unassigned) for the expand/collapse view.
+  const groups = useMemo(() => {
+    const byProject = new Map<string, Workflow[]>()
+    for (const wf of workflows) {
+      const key = wf.projectId ?? 'none'
+      if (!byProject.has(key)) byProject.set(key, [])
+      byProject.get(key)!.push(wf)
+    }
+    const result: { key: string; label: string; workflows: Workflow[] }[] = []
+    for (const p of projects) {
+      if (byProject.has(p.id)) result.push({ key: p.id, label: p.name, workflows: byProject.get(p.id)! })
+    }
+    if (byProject.has('none')) result.push({ key: 'none', label: 'No project', workflows: byProject.get('none')! })
+    return result
+  }, [workflows, projects])
+
+  const toggleGroup = (key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] }))
 
   const runNow = async (wf: Workflow) => {
     setBusyId(wf.id)
@@ -280,68 +300,80 @@ export default function WorkflowsPage() {
           </tr>
         </thead>
         <tbody>
-          {workflows.map((wf) => {
-            // myPermission null = SSO off (unrestricted, as before roles existed).
-            const canManage = wf.myPermission == null || wf.myPermission === 'manage'
-            const canEdit = canManage || wf.myPermission === 'edit'
-            return (
-              <tr key={wf.id}>
-                <td>{wf.name}</td>
-                <td>{wf.description}</td>
-                <td>
-                  {/* Inline reassignment; grouping only, still gated by the edit permission. */}
-                  <select
-                    style={{ width: 150 }}
-                    disabled={!canEdit}
-                    value={wf.projectId ?? NO_PROJECT}
-                    title={canEdit ? 'Move this workflow to a project' : 'No edit permission'}
-                    onChange={(e) => void assignProject(wf, e.target.value)}
-                  >
-                    <option value={NO_PROJECT}>No project</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <span className={`badge ${wf.enabled ? 'enabled' : 'disabled'}`}>
-                    {wf.enabled ? 'enabled' : 'disabled'}
-                  </span>
-                </td>
-                <td className="owner-chip">{wf.ownerEmail ?? '—'}</td>
-                <td>{new Date(wf.updatedAt).toLocaleString()}</td>
-                <td>
-                  <div className="row-actions">
-                    <button type="button" onClick={() => navigate(`/workflows/${wf.id}/builder`)}>
-                      <IconCode /> Open builder
-                    </button>
-                    {canEdit && (
-                      <button type="button" className="primary" disabled={busyId === wf.id || !wf.enabled} onClick={() => void runNow(wf)}>
-                        <IconPlay /> Run now
-                      </button>
-                    )}
-                    {canEdit && (
-                      <button type="button" disabled={busyId === wf.id} onClick={() => void toggle(wf)}>
-                        {wf.enabled ? <IconPause /> : <IconPlay />} {wf.enabled ? 'Disable' : 'Enable'}
-                      </button>
-                    )}
-                    {canManage && (
-                      <button type="button" disabled={busyId === wf.id} onClick={() => void openShare(wf)}>
-                        <IconShare /> Share
-                      </button>
-                    )}
-                    {canManage && (
-                      <button type="button" className="danger" disabled={busyId === wf.id} onClick={() => void remove(wf)}>
-                        <IconTrash /> Delete
-                      </button>
-                    )}
-                  </div>
+          {groups.map((g) => (
+            <Fragment key={g.key}>
+              <tr className="group-row" onClick={() => toggleGroup(g.key)} title="Click to expand/collapse">
+                <td colSpan={7}>
+                  <span className={`chevron${collapsed[g.key] ? ' collapsed' : ''}`}>▾</span>
+                  {g.label}
+                  <span className="group-count">{g.workflows.length}</span>
                 </td>
               </tr>
-            )
-          })}
+              {!collapsed[g.key] &&
+                g.workflows.map((wf) => {
+                  // myPermission null = SSO off (unrestricted, as before roles existed).
+                  const canManage = wf.myPermission == null || wf.myPermission === 'manage'
+                  const canEdit = canManage || wf.myPermission === 'edit'
+                  return (
+                    <tr key={wf.id}>
+                      <td>{wf.name}</td>
+                      <td>{wf.description}</td>
+                      <td>
+                        {/* Inline reassignment; grouping only, still gated by the edit permission. */}
+                        <select
+                          style={{ width: 150 }}
+                          disabled={!canEdit}
+                          value={wf.projectId ?? NO_PROJECT}
+                          title={canEdit ? 'Move this workflow to a project' : 'No edit permission'}
+                          onChange={(e) => void assignProject(wf, e.target.value)}
+                        >
+                          <option value={NO_PROJECT}>No project</option>
+                          {projects.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <span className={`badge ${wf.enabled ? 'enabled' : 'disabled'}`}>
+                          {wf.enabled ? 'enabled' : 'disabled'}
+                        </span>
+                      </td>
+                      <td className="owner-chip">{wf.ownerEmail ?? '—'}</td>
+                      <td>{new Date(wf.updatedAt).toLocaleString()}</td>
+                      <td>
+                        <div className="row-actions">
+                          <button type="button" onClick={() => navigate(`/workflows/${wf.id}/builder`)}>
+                            <IconCode /> Open builder
+                          </button>
+                          {canEdit && (
+                            <button type="button" className="primary" disabled={busyId === wf.id || !wf.enabled} onClick={() => void runNow(wf)}>
+                              <IconPlay /> Run now
+                            </button>
+                          )}
+                          {canEdit && (
+                            <button type="button" disabled={busyId === wf.id} onClick={() => void toggle(wf)}>
+                              {wf.enabled ? <IconPause /> : <IconPlay />} {wf.enabled ? 'Disable' : 'Enable'}
+                            </button>
+                          )}
+                          {canManage && (
+                            <button type="button" disabled={busyId === wf.id} onClick={() => void openShare(wf)}>
+                              <IconShare /> Share
+                            </button>
+                          )}
+                          {canManage && (
+                            <button type="button" className="danger" disabled={busyId === wf.id} onClick={() => void remove(wf)}>
+                              <IconTrash /> Delete
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+            </Fragment>
+          ))}
           {workflows.length === 0 && (
             <tr>
               <td colSpan={7}>No workflows{projectFilter ? ' in this project' : ' yet'}.</td>

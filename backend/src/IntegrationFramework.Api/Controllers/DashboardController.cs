@@ -34,7 +34,9 @@ public class DashboardController(MetadataDbContext db, CurrentUserService curren
 
     private sealed class BucketRow
     {
-        public int BucketIndex { get; set; }
+        /// <summary>long: the SQL expression (DATEDIFF / step) is bigint — an int here
+        /// throws InvalidCastException on SqlDataReader.GetInt32 (found live on staging).</summary>
+        public long BucketIndex { get; set; }
         public int Total { get; set; }
         public int Success { get; set; }
         public int Failed { get; set; }
@@ -103,8 +105,9 @@ public class DashboardController(MetadataDbContext db, CurrentUserService curren
 
         // Bucket series. SQL Server: one grouped query with an integer bucket index
         // (seconds since `from` / step). InMemory (tests): same index math client-side
-        // over a minimal projection.
-        Dictionary<int, BucketRow> grouped;
+        // over a minimal projection. The index is a long everywhere — the SQL division
+        // produces bigint and mixing types throws on the reader.
+        Dictionary<long, BucketRow> grouped;
         if (db.Database.IsSqlServer())
         {
             grouped = await QueryBucketsSqlServerAsync(from, now, spec.StepSeconds, visibleIds);
@@ -116,7 +119,7 @@ public class DashboardController(MetadataDbContext db, CurrentUserService curren
                 .Select(r => new { r.Status, r.StartedAt })
                 .ToListAsync();
             grouped = projection
-                .GroupBy(r => (int)((r.StartedAt - from).TotalSeconds / spec.StepSeconds))
+                .GroupBy(r => (long)((r.StartedAt - from).TotalSeconds / spec.StepSeconds))
                 .ToDictionary(
                     g => g.Key,
                     g => new BucketRow
@@ -131,7 +134,7 @@ public class DashboardController(MetadataDbContext db, CurrentUserService curren
         // Zero-fill the grid so the chart has contiguous buckets, oldest first.
         var bucketCount = (int)Math.Ceiling(spec.Window.TotalSeconds / spec.StepSeconds);
         var buckets = new List<DashboardBucketDto>(bucketCount);
-        for (var i = 0; i < bucketCount; i++)
+        for (var i = 0L; i < bucketCount; i++)
         {
             grouped.TryGetValue(i, out var row);
             var start = i == 0 ? from : from.AddSeconds(i * spec.StepSeconds);
@@ -164,7 +167,7 @@ public class DashboardController(MetadataDbContext db, CurrentUserService curren
     /// positional (@p0, @p1, ...); the workflow IN-list (when scoping a contributor)
     /// appends @p3..@pN. Unit/step are internal constants, never user input.
     /// </summary>
-    private async Task<Dictionary<int, BucketRow>> QueryBucketsSqlServerAsync(
+    private async Task<Dictionary<long, BucketRow>> QueryBucketsSqlServerAsync(
         DateTimeOffset from, DateTimeOffset to, long stepSeconds, HashSet<Guid> visibleIds)
     {
         var parameters = new List<object> { from, to, stepSeconds };
