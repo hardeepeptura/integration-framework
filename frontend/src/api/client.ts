@@ -4,11 +4,12 @@ import type {
   ConnectionTestResult,
   DashboardRange,
   DashboardSummary,
+  QueuedRun,
   Run,
   SharePermission,
   ValidationResult,
+  WebhookEnqueueResult,
   WebhookEvent,
-  WebhookTriggerResult,
   Workflow,
   WorkflowShare,
 } from './types'
@@ -81,14 +82,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(graph ? { graph } : {}),
     }),
+  // 202 queued — the worker dispatcher executes it; watch the Runs page.
   runWorkflow: (id: string, input?: unknown) =>
-    request<Run>(`/api/workflows/${id}/run`, { method: 'POST', body: JSON.stringify(input ?? {}) }),
+    request<QueuedRun>(`/api/workflows/${id}/run`, { method: 'POST', body: JSON.stringify(input ?? {}) }),
 
   // Runs
   listRuns: (workflowId?: string, limit = 100) =>
     request<Run[]>(`/api/runs?limit=${limit}${workflowId ? `&workflowId=${workflowId}` : ''}`),
   getRun: (id: string) => request<Run>(`/api/runs/${id}`),
-  rerunRun: (id: string) => request<Run>(`/api/runs/${id}/rerun`, { method: 'POST' }),
+  rerunRun: (id: string) => request<QueuedRun>(`/api/runs/${id}/rerun`, { method: 'POST' }),
 
   // Connections
   listConnections: () => request<Connection[]>('/api/connections'),
@@ -102,9 +104,9 @@ export const api = {
   testConnection: (id: string) =>
     request<ConnectionTestResult>(`/api/connections/${id}/test`, { method: 'POST' }),
 
-  // Webhooks (durable deliveries + simulate)
+  // Webhooks (durable deliveries + simulate) — 202 queued
   triggerWebhook: (workflowId: string, payload: unknown) =>
-    request<WebhookTriggerResult>(`/webhook/${workflowId}`, {
+    request<WebhookEnqueueResult>(`/webhook/${workflowId}`, {
       method: 'POST',
       body: JSON.stringify(payload ?? {}),
     }),
@@ -117,7 +119,7 @@ export const api = {
   },
   getWebhookEvent: (id: string) => request<WebhookEvent>(`/api/webhook-events/${id}`),
   replayWebhookEvent: (id: string) =>
-    request<WebhookTriggerResult>(`/api/webhook-events/${id}/replay`, { method: 'POST' }),
+    request<WebhookEnqueueResult>(`/api/webhook-events/${id}/replay`, { method: 'POST' }),
 
   // Users and roles (admin only)
   listUsers: () => request<AppUser[]>('/api/users'),

@@ -2,6 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json.Nodes;
+using IntegrationFramework.Core.Data;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit;
@@ -23,7 +26,12 @@ public class P0ApiTests : IClassFixture<P0ApiTests.TestFactory>
             _derived = _root.WithWebHostBuilder(builder =>
             {
                 builder.UseSetting("Self:BaseUrl", "http://localhost:8000");
-                builder.ConfigureServices(services =>
+                // Fast dispatcher polling so queued runs complete quickly in tests.
+                builder.UseSetting("Dispatcher:PollSeconds", "0.2");
+                // Private InMemory store: same-name databases are shared process-wide,
+                // and other hosts' dispatchers would claim this host's queued runs.
+                builder.UseSetting("InMemory:DatabaseName", $"if-test-{Guid.NewGuid():N}");
+                builder.ConfigureTestServices(services =>
                 {
                     services.RemoveAll<System.Net.Http.IHttpClientFactory>();
                     services.AddSingleton<System.Net.Http.IHttpClientFactory>(
@@ -137,10 +145,12 @@ public class P0ApiTests : IClassFixture<P0ApiTests.TestFactory>
         var wf = await createWf.Content.ReadFromJsonAsync<JsonObject>();
         var wfId = wf!["id"]!.GetValue<string>();
 
+        // Async-first: 202-queued, then the dispatcher executes it.
+        var since = DateTimeOffset.UtcNow;
         var run = await _client.PostAsJsonAsync($"/api/workflows/{wfId}/run",
             new { name = "Ada", sku = "WIDGET-1" });
-        Assert.Equal(HttpStatusCode.OK, run.StatusCode);
-        var runDto = await run.Content.ReadFromJsonAsync<JsonObject>();
+        Assert.Equal(HttpStatusCode.Accepted, run.StatusCode);
+        var runDto = await RunPolling.WaitForRunAsync(_client, Guid.Parse(wfId!), since);
         Assert.Equal("success", runDto!["status"]!.GetValue<string>());
         Assert.Equal("Ada", runDto["output"]!["customer_name"]!.GetValue<string>());
 
@@ -206,12 +216,16 @@ public class P0ApiTests : IClassFixture<P0ApiTests.TestFactory>
         var sample = workflows!.First(w => w!["name"]!.GetValue<string>().Contains("Sample"));
         var sampleId = sample!["id"]!.GetValue<string>();
 
+        // 202-queued: the durable inbox records the delivery, the dispatcher executes it.
         var post = await _client.PostAsJsonAsync($"/webhook/{sampleId}", new { sku = "GIZMO-9", quantity = 2, name = "Durability" });
-        Assert.Equal(HttpStatusCode.OK, post.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, post.StatusCode);
         var postDto = await post.Content.ReadFromJsonAsync<JsonObject>();
-        Assert.Equal("success", postDto!["status"]!.GetValue<string>());
+        Assert.Equal("queued", postDto!["status"]!.GetValue<string>());
         var eventId = postDto["eventId"]!.GetValue<string>();
-        var originalRunId = postDto["runId"]!.GetValue<string>();
+
+        var finished = await RunPolling.WaitForEventAsync(_client, Guid.Parse(eventId));
+        Assert.Equal("succeeded", finished!["status"]!.GetValue<string>());
+        var originalRunId = finished["runId"]!.GetValue<string>();
 
         // Event is in the durable list with status + run link.
         var events = await _client.GetFromJsonAsync<JsonArray>($"/api/webhook-events?workflowId={sampleId}");
@@ -223,12 +237,12 @@ public class P0ApiTests : IClassFixture<P0ApiTests.TestFactory>
         var detail = await _client.GetFromJsonAsync<JsonObject>($"/api/webhook-events/{eventId}");
         Assert.Equal("succeeded", detail!["status"]!.GetValue<string>());
 
-        // Replay executes the stored body and creates a NEW run.
+        // Replay re-queues the stored body; a NEW run is created by the dispatcher.
         var replay = await _client.PostAsync($"/api/webhook-events/{eventId}/replay", null);
-        Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
-        var replayDto = await replay.Content.ReadFromJsonAsync<JsonObject>();
-        Assert.Equal("success", replayDto!["status"]!.GetValue<string>());
-        Assert.NotEqual(originalRunId, replayDto["runId"]!.GetValue<string>());
+        Assert.Equal(HttpStatusCode.Accepted, replay.StatusCode);
+        var replayed = await RunPolling.WaitForEventAsync(_client, Guid.Parse(eventId));
+        Assert.Equal("succeeded", replayed!["status"]!.GetValue<string>());
+        Assert.NotEqual(originalRunId, replayed["runId"]!.GetValue<string>());
 
         // Unknown webhook → 404, but the rejection is still recorded for diagnostics.
         var unknown = await _client.PostAsJsonAsync($"/webhook/{Guid.NewGuid()}", new { x = 1 });

@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
-import type { WebhookEvent, WebhookTriggerResult, Workflow } from '../api/types'
+import type { WebhookEvent, WebhookRunResult, Workflow } from '../api/types'
 
 const DEFAULT_PAYLOAD = '{\n  "sku": "WIDGET-1",\n  "quantity": 2,\n  "name": "Ada Lovelace"\n}'
 
-function ResultView({ result }: { result: WebhookTriggerResult }) {
+function ResultView({ result }: { result: WebhookRunResult }) {
   return (
     <div className="step-row">
       <h4>
-        Run <span className={`badge ${result.status}`}>{result.status}</span>
+        Run <span className={`badge ${result.status === 'succeeded' ? 'success' : result.status === 'rejected' ? 'failed' : result.status}`}>{result.status}</span>
       </h4>
       <div className="json-view">
         {JSON.stringify({ runId: result.runId, output: result.output, error: result.error }, null, 2)}
@@ -17,11 +17,33 @@ function ResultView({ result }: { result: WebhookTriggerResult }) {
   )
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** Deliveries run asynchronously (worker dispatcher): poll the event until it finishes, then load its run. */
+async function waitForEventResult(eventId: string, attempts = 30): Promise<WebhookRunResult> {
+  for (let i = 0; i < attempts; i++) {
+    const evt = await api.getWebhookEvent(eventId)
+    if (evt.status === 'succeeded' || evt.status === 'failed' || evt.status === 'rejected') {
+      const run = evt.runId ? await api.getRun(evt.runId).catch(() => undefined) : undefined
+      return {
+        eventId: evt.id,
+        runId: evt.runId,
+        status: evt.status === 'succeeded' ? 'success' : evt.status,
+        output: run?.output,
+        error: evt.error ?? run?.error,
+      }
+    }
+    await sleep(1000)
+  }
+  return { eventId, status: 'failed', error: 'Run did not finish within the wait window — check the Runs page.' }
+}
+
 export default function WebhooksPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [workflowId, setWorkflowId] = useState('')
   const [payloadText, setPayloadText] = useState(DEFAULT_PAYLOAD)
-  const [simulateResult, setSimulateResult] = useState<WebhookTriggerResult>()
+  const [simulateResult, setSimulateResult] = useState<WebhookRunResult>()
+  const [simulateNote, setSimulateNote] = useState<string>()
   const [events, setEvents] = useState<WebhookEvent[]>([])
   const [statusFilter, setStatusFilter] = useState('')
   const [busy, setBusy] = useState(false)
@@ -66,12 +88,16 @@ export default function WebhooksPage() {
       return
     }
     setBusy(true)
+    setSimulateNote('Delivery queued — waiting for the run to finish…')
     try {
-      const result = await api.triggerWebhook(workflowId, payload)
+      const enqueued = await api.triggerWebhook(workflowId, payload)
+      const result = await waitForEventResult(enqueued.eventId)
       setSimulateResult(result)
+      setSimulateNote(undefined)
       await loadEvents()
     } catch (e) {
       setError(String(e))
+      setSimulateNote(undefined)
       await loadEvents()
     } finally {
       setBusy(false)
@@ -81,12 +107,16 @@ export default function WebhooksPage() {
   const replay = async (evt: WebhookEvent) => {
     setError(undefined)
     setBusy(true)
+    setSimulateNote('Replay queued — waiting for the run to finish…')
     try {
-      const result = await api.replayWebhookEvent(evt.id)
+      const enqueued = await api.replayWebhookEvent(evt.id)
+      const result = await waitForEventResult(enqueued.eventId)
       setSimulateResult(result)
+      setSimulateNote(undefined)
       await loadEvents()
     } catch (e) {
       setError(String(e))
+      setSimulateNote(undefined)
     } finally {
       setBusy(false)
     }
@@ -118,6 +148,7 @@ export default function WebhooksPage() {
           onChange={(e) => setPayloadText(e.target.value)}
           spellCheck={false}
         />
+        {simulateNote && <div className="ok-text">{simulateNote}</div>}
         {simulateResult && <ResultView result={simulateResult} />}
       </section>
 

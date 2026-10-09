@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
+using IntegrationFramework.Core.Data;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit;
@@ -36,6 +38,11 @@ public class ApiToApiFlowTests : IDisposable
         _derived = _root.WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Self:BaseUrl", "http://localhost:8000");
+            // Fast dispatcher polling so queued runs complete quickly in tests.
+            builder.UseSetting("Dispatcher:PollSeconds", "0.2");
+            // Private InMemory store: same-name databases are shared process-wide,
+            // and other hosts' dispatchers would claim this host's queued runs.
+            builder.UseSetting("InMemory:DatabaseName", $"if-test-{Guid.NewGuid():N}");
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<System.Net.Http.IHttpClientFactory>();
@@ -71,11 +78,12 @@ public class ApiToApiFlowTests : IDisposable
         var sample = list!.First(w => w!["name"]!.GetValue<string>().Contains("API to API"));
         var id = sample!["id"]!.GetValue<string>();
 
-        // Manual run: GET CRM leads → loop → map lead → POST inventory reserve.
+        // Manual run queues (202), the dispatcher executes: GET CRM leads → loop → map → POST reserve.
+        var since = DateTimeOffset.UtcNow;
         var run = await _client.PostAsJsonAsync($"/api/workflows/{id}/run", new { });
-        Assert.Equal(HttpStatusCode.OK, run.StatusCode);
-        var runDto = await run.Content.ReadFromJsonAsync<JsonObject>();
-        Assert.Equal("success", runDto!["status"]!.GetValue<string>());
+        Assert.Equal(HttpStatusCode.Accepted, run.StatusCode);
+        var runDto = await RunPolling.WaitForRunAsync(_client, Guid.Parse(id!), since);
+        Assert.Equal("success", runDto["status"]!.GetValue<string>());
 
         // The run output is the loop result: one lead iterated.
         Assert.Equal(1, runDto["output"]!["count"]!.GetValue<int>());
@@ -112,10 +120,11 @@ public class ApiToApiFlowTests : IDisposable
         var sample = list!.First(w => w!["name"]!.GetValue<string>().Contains("API to API"));
         var id = sample!["id"]!.GetValue<string>();
 
+        var since = DateTimeOffset.UtcNow;
         var run = await _client.PostAsJsonAsync($"/api/workflows/{id}/run", new { });
-        Assert.Equal(HttpStatusCode.OK, run.StatusCode);
-        var runDto = await run.Content.ReadFromJsonAsync<JsonObject>();
-        Assert.Equal("success", runDto!["status"]!.GetValue<string>());
+        Assert.Equal(HttpStatusCode.Accepted, run.StatusCode);
+        var runDto = await RunPolling.WaitForRunAsync(_client, Guid.Parse(id!), since);
+        Assert.Equal("success", runDto["status"]!.GetValue<string>());
         Assert.Equal(0, runDto["output"]!["count"]!.GetValue<int>());
 
         // No reservation happened: stock untouched.

@@ -33,6 +33,15 @@ export default function RunsPage() {
     void load()
   }, [load])
 
+  // Runs now execute asynchronously on the worker dispatcher — auto-refresh so
+  // newly queued runs appear and running ones flip to success/failed on their own.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void load()
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [load])
+
   const rerun = async (run: Run) => {
     setError(undefined)
     try {

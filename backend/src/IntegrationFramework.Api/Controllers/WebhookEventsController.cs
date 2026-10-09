@@ -41,9 +41,12 @@ public class WebhookEventsController(
         return webhookEvent is null ? NotFound() : Ok(WebhookEventDto.From(webhookEvent));
     }
 
-    /// <summary>Re-executes the workflow with the originally delivered body.</summary>
+    /// <summary>
+    /// Re-queues the originally delivered body: returns 202 immediately; the
+    /// RunDispatcher executes it and flips this event to succeeded/failed.
+    /// </summary>
     [HttpPost("{id:guid}/replay")]
-    public async Task<ActionResult<object>> Replay(Guid id)
+    public async Task<IActionResult> Replay(Guid id)
     {
         var webhookEvent = await db.WebhookEvents.FindAsync([id]);
         if (webhookEvent is null) return NotFound();
@@ -55,34 +58,25 @@ public class WebhookEventsController(
         if (!await access.CanEditAsync(user, workflow))
             return NotFound();
 
-        JsonNode? body = null;
-        if (!string.IsNullOrWhiteSpace(webhookEvent.BodyJson))
-        {
-            try { body = JsonNode.Parse(webhookEvent.BodyJson); }
-            catch
-            {
-                return Conflict(new { error = "Stored event body is not valid JSON and cannot be replayed." });
-            }
-        }
+        // Back to "received" while the replay is queued; the dispatcher finishes it.
+        webhookEvent.Status = "received";
+        webhookEvent.RunId = null;
+        webhookEvent.Error = null;
 
-        // Replay with the same env the webhook path provides so $.env.* references resolve.
-        var env = new Dictionary<string, string>
+        db.RunQueueItems.Add(new Core.Entities.RunQueueItem
         {
-            ["self_base_url"] = configuration["Self:BaseUrl"] ?? "http://localhost:8000"
-        };
-        var run = await executor.ExecuteAsync(workflow, body, env);
-        webhookEvent.RunId = run.Id;
-        webhookEvent.Status = run.Status == "success" ? "succeeded" : "failed";
-        webhookEvent.Error = run.Error;
+            WorkflowId = webhookEvent.WorkflowId,
+            InputJson = webhookEvent.BodyJson,
+            TriggerType = "webhook",
+            DedupeKey = $"run:{Guid.NewGuid():N}",
+            WebhookEventId = webhookEvent.Id
+        });
         await db.SaveChangesAsync();
 
-        return Ok(new
+        return Accepted(new
         {
             eventId = webhookEvent.Id,
-            runId = run.Id,
-            status = run.Status,
-            output = RunDto.From(run).Output,
-            error = run.Error
+            status = "queued"
         });
     }
 }

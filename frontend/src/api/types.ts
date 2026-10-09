@@ -147,11 +147,24 @@ export interface WebhookEvent {
   receivedAt: string
 }
 
-/** Response of POST /webhook/{id} and POST /api/webhook-events/{id}/replay. */
-export interface WebhookTriggerResult {
+/** 202 response of POST /api/workflows/{id}/run and POST /api/runs/{id}/rerun — the worker dispatcher executes it asynchronously. */
+export interface QueuedRun {
+  queueId: string
+  workflowId: string
+  status: 'queued'
+}
+
+/** 202 response of POST /webhook/{id} and POST /api/webhook-events/{id}/replay — the worker dispatcher executes it asynchronously. */
+export interface WebhookEnqueueResult {
   eventId: string
-  runId: string
-  status: 'running' | 'success' | 'failed'
+  status: 'queued'
+}
+
+/** A finished webhook delivery with its run, for the simulate/replay result view. */
+export interface WebhookRunResult {
+  eventId: string
+  runId?: string
+  status: 'success' | 'failed' | 'succeeded' | 'rejected'
   output?: unknown
   error?: string
 }

@@ -125,9 +125,12 @@ public class WorkflowsController(
         return Ok(new ValidationResultDto(errors.Count == 0, errors));
     }
 
-    /// <summary>Manual run. Executes inline and returns the completed run (simple + deterministic for Phase 1).</summary>
+    /// <summary>
+    /// Manual run: queues the run and returns 202 immediately. The worker-side
+    /// RunDispatcher claims and executes it (async-first — the API stays flat under load).
+    /// </summary>
     [HttpPost("{id:guid}/run")]
-    public async Task<ActionResult<RunDto>> Run(Guid id, [FromBody] JsonNode? input)
+    public async Task<IActionResult> Run(Guid id, [FromBody] JsonNode? input)
     {
         var user = await currentUser.ResolveAsync(User);
         var workflow = await LoadAsync(id);
@@ -136,8 +139,22 @@ public class WorkflowsController(
         if (!workflow.Enabled)
             return Conflict(new { error = "Workflow is disabled." });
 
-        var run = await ExecuteAsync(workflow, input);
-        return Ok(RunDto.From(run));
+        var item = new Core.Entities.RunQueueItem
+        {
+            WorkflowId = id,
+            InputJson = input?.ToJsonString(),
+            TriggerType = "manual",
+            DedupeKey = $"run:{Guid.NewGuid():N}"
+        };
+        db.RunQueueItems.Add(item);
+        await db.SaveChangesAsync();
+
+        return Accepted(new
+        {
+            queueId = item.Id,
+            workflowId = id,
+            status = "queued"
+        });
     }
 
     private async Task<Core.Entities.Workflow?> LoadAsync(Guid id) =>
@@ -152,16 +169,5 @@ public class WorkflowsController(
         if (user.IsAdmin || workflow.OwnerEmail == user.Email) return "manage";
         var share = workflow.Shares.FirstOrDefault(s => s.Email == user.Email);
         return share?.Permission ?? (workflow.OwnerEmail is null ? "view" : null);
-    }
-
-    private async Task<Core.Entities.WorkflowRun> ExecuteAsync(
-        Core.Entities.Workflow workflow, JsonNode? input)
-    {
-        var env = new Dictionary<string, string>
-        {
-            ["self_base_url"] = HttpContext.RequestServices
-                .GetRequiredService<IConfiguration>()["Self:BaseUrl"] ?? "http://localhost:8000"
-        };
-        return await executor.ExecuteAsync(workflow, input, env);
     }
 }

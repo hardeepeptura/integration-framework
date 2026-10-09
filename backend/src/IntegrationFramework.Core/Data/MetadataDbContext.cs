@@ -17,6 +17,7 @@ public class MetadataDbContext(DbContextOptions<MetadataDbContext> options) : Db
     public DbSet<WebhookEvent> WebhookEvents => Set<WebhookEvent>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
     public DbSet<WorkflowShare> WorkflowShares => Set<WorkflowShare>();
+    public DbSet<RunQueueItem> RunQueueItems => Set<RunQueueItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -39,6 +40,9 @@ public class MetadataDbContext(DbContextOptions<MetadataDbContext> options) : Db
                 .WithOne(s => s.Run)
                 .HasForeignKey(s => s.RunId)
                 .OnDelete(DeleteBehavior.Cascade);
+            // Dashboard aggregates over time windows (COUNT/SUM CASE + GROUP BY).
+            e.HasIndex(r => new { r.StartedAt, r.Status });
+            e.HasIndex(r => new { r.WorkflowId, r.StartedAt });
         });
 
         modelBuilder.Entity<StepRun>(e =>
@@ -98,5 +102,20 @@ public class MetadataDbContext(DbContextOptions<MetadataDbContext> options) : Db
         });
 
         modelBuilder.Entity<Workflow>(e => e.HasIndex(w => w.OwnerEmail));
+
+        modelBuilder.Entity<RunQueueItem>(e =>
+        {
+            e.HasKey(q => q.Id);
+            e.Property(q => q.TriggerType).HasMaxLength(20).IsRequired();
+            e.Property(q => q.Status).HasMaxLength(20).IsRequired();
+            e.Property(q => q.DedupeKey).HasMaxLength(200).IsRequired();
+            e.Property(q => q.ClaimedBy).HasMaxLength(100);
+            // Claim races resolve through this token (one winner per UPDATE).
+            e.Property(q => q.Version).IsConcurrencyToken();
+            // Claim scan: queued + expired-visibility items oldest-first.
+            e.HasIndex(q => new { q.Status, q.EnqueuedAt });
+            // One dedupe key per workflow: no double-fired schedules, ever.
+            e.HasIndex(q => new { q.WorkflowId, q.DedupeKey }).IsUnique();
+        });
     }
 }

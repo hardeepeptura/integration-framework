@@ -49,24 +49,40 @@ public class RunsController(
         return Ok(RunDto.From(run));
     }
 
+    /// <summary>
+    /// Rerun: queues a new run with the original input and returns 202 immediately
+    /// (the RunDispatcher executes it, async-first like every other trigger).
+    /// </summary>
     [HttpPost("{id:guid}/rerun")]
-    public async Task<ActionResult<RunDto>> Rerun(Guid id)
+    public async Task<IActionResult> Rerun(Guid id)
     {
         var previous = await db.WorkflowRuns
-            .Include(r => r.StepRuns)
             .AsNoTracking()
             .FirstOrDefaultAsync(r => r.Id == id);
         if (previous is null) return NotFound();
 
+        var user = await currentUser.ResolveAsync(User);
         var workflow = await db.Workflows.FindAsync([previous.WorkflowId]);
-        if (workflow is null) return NotFound(new { error = "The workflow for this run no longer exists." });
+        if (workflow is null || !await access.CanEditAsync(user, workflow))
+            return NotFound(new { error = "The workflow for this run no longer exists." });
         if (!workflow.Enabled)
             return Conflict(new { error = "Workflow is disabled." });
 
-        var input = string.IsNullOrWhiteSpace(previous.InputJson)
-            ? null
-            : JsonNode.Parse(previous.InputJson);
-        var run = await executor.ExecuteAsync(workflow, input);
-        return Ok(RunDto.From(run));
+        var item = new Core.Entities.RunQueueItem
+        {
+            WorkflowId = workflow.Id,
+            InputJson = previous.InputJson,
+            TriggerType = "manual",
+            DedupeKey = $"run:{Guid.NewGuid():N}"
+        };
+        db.RunQueueItems.Add(item);
+        await db.SaveChangesAsync();
+
+        return Accepted(new
+        {
+            queueId = item.Id,
+            workflowId = workflow.Id,
+            status = "queued"
+        });
     }
 }

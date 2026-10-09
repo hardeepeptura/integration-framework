@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
+using IntegrationFramework.Core.Data;
 using IntegrationFramework.Core.Engine;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit;
@@ -50,7 +53,12 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.TestFactory
             _derived = _root.WithWebHostBuilder(builder =>
             {
                 builder.UseSetting("Self:BaseUrl", "http://localhost:8000");
-                builder.ConfigureServices(services =>
+                // Fast dispatcher polling so queued runs complete quickly in tests.
+                builder.UseSetting("Dispatcher:PollSeconds", "0.2");
+                // Private InMemory store: same-name databases are shared process-wide,
+                // and other hosts' dispatchers would claim this host's queued runs.
+                builder.UseSetting("InMemory:DatabaseName", $"if-test-{Guid.NewGuid():N}");
+                builder.ConfigureTestServices(services =>
                 {
                     // Replace the default IHttpClientFactory with the scripted one so
                     // outbound HTTP from workflow nodes never leaves the test process.
@@ -168,7 +176,7 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.TestFactory
     }
 
     [Fact]
-    public async Task Manual_run_executes_transform_flow_and_records_steps()
+    public async Task Manual_run_queues_executes_transform_flow_and_records_steps()
     {
         var create = await _client.PostAsJsonAsync("/api/workflows", new
         {
@@ -176,46 +184,62 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.TestFactory
             graph = TransformGraph()
         });
         var created = await create.Content.ReadFromJsonAsync<JsonObject>();
-        var id = created!["id"]!.GetValue<string>();
+        var id = Guid.Parse(created!["id"]!.GetValue<string>());
 
+        // Async-first: the trigger returns 202-queued; the dispatcher executes it.
+        var since = DateTimeOffset.UtcNow;
         var run = await _client.PostAsJsonAsync($"/api/workflows/{id}/run",
             new { sku = "WIDGET-1", quantity = 4 });
-        Assert.Equal(HttpStatusCode.OK, run.StatusCode);
-        var runDto = await run.Content.ReadFromJsonAsync<JsonObject>();
+        Assert.Equal(HttpStatusCode.Accepted, run.StatusCode);
+        var queued = await run.Content.ReadFromJsonAsync<JsonObject>();
+        Assert.Equal("queued", queued!["status"]!.GetValue<string>());
+        Assert.NotEmpty(queued["queueId"]!.GetValue<string>());
 
+        var runDto = await RunPolling.WaitForRunAsync(_client, id, since);
         Assert.Equal("success", runDto!["status"]!.GetValue<string>());
         Assert.Equal("4 x WIDGET-1", runDto["output"]!["line"]!.GetValue<string>());
         Assert.True((runDto["steps"] as JsonArray)!.Count == 2);
 
-        // Runs list + detail + rerun
+        // Runs list + detail
         var list = await _client.GetFromJsonAsync<JsonArray>("/api/runs");
         Assert.Contains(list!, r => r!["id"]!.GetValue<string>() == runDto["id"]!.GetValue<string>());
 
         var detail = await _client.GetFromJsonAsync<JsonObject>($"/api/runs/{runDto["id"]!.GetValue<string>()}");
         Assert.Equal("success", detail!["status"]!.GetValue<string>());
 
+        // Rerun also queues (202) and produces a NEW run.
+        var rerunSince = DateTimeOffset.UtcNow;
         var rerun = await _client.PostAsync($"/api/runs/{runDto["id"]!.GetValue<string>()}/rerun", null);
-        Assert.Equal(HttpStatusCode.OK, rerun.StatusCode);
-        var rerunDto = await rerun.Content.ReadFromJsonAsync<JsonObject>();
+        Assert.Equal(HttpStatusCode.Accepted, rerun.StatusCode);
+        var rerunDto = await RunPolling.WaitForRunAsync(_client, id, rerunSince);
         Assert.Equal("success", rerunDto!["status"]!.GetValue<string>());
         Assert.NotEqual(runDto["id"]!.GetValue<string>(), rerunDto["id"]!.GetValue<string>());
     }
 
     [Fact]
-    public async Task Webhook_trigger_executes_workflow_with_body_input()
+    public async Task Webhook_trigger_queues_and_executes_workflow_with_body_input()
     {
         // Reuse the seeded sample workflow: webhook → transform → HTTP POST (stubbed).
         var list = await _client.GetFromJsonAsync<JsonArray>("/api/workflows");
         var sample = list!.First(w => w!["name"]!.GetValue<string>().Contains("Sample"));
-        var sampleId = sample!["id"]!.GetValue<string>();
+        var sampleId = Guid.Parse(sample!["id"]!.GetValue<string>());
 
+        // 202-queued: the webhook never waits for execution.
         var response = await _client.PostAsJsonAsync($"/webhook/{sampleId}",
             new { sku = "GIZMO-2", quantity = 5, name = "Hardeep" });
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonObject>();
-        Assert.Equal("success", body!["status"]!.GetValue<string>());
+        Assert.Equal("queued", body!["status"]!.GetValue<string>());
+        var eventId = Guid.Parse(body["eventId"]!.GetValue<string>());
+
+        // The dispatcher finishes the delivery; the event links its run.
+        var evt = await RunPolling.WaitForEventAsync(_client, eventId);
+        Assert.Equal("succeeded", evt!["status"]!.GetValue<string>());
+        var runId = evt["runId"]!.GetValue<string>();
+        var run = await _client.GetFromJsonAsync<JsonObject>($"/api/runs/{runId}");
+        Assert.Equal("success", run!["status"]!.GetValue<string>());
         // The HTTP node was stubbed to return remaining=99.
-        Assert.Equal(99, body["output"]!["body"]!["remaining"]!.GetValue<int>());
+        Assert.Equal(99, run["output"]!["body"]!["remaining"]!.GetValue<int>());
     }
 
     [Fact]

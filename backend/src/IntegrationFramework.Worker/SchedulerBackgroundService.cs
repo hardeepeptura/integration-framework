@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 using IntegrationFramework.Core.Data;
+using IntegrationFramework.Core.Entities;
 using IntegrationFramework.Core.Engine;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -66,12 +67,35 @@ public class SchedulerBackgroundService(
             if (next > now) continue;
 
             _nextRunAt[workflow.Id] = now.AddSeconds(trigger.IntervalSeconds);
-            logger.LogInformation("Executing scheduled run for workflow '{Name}' ({Id}).", workflow.Name, workflow.Id);
 
-            var executor = scope.ServiceProvider.GetRequiredService<WorkflowExecutor>();
-            await executor.ExecuteAsync(workflow,
-                new JsonObject { ["scheduled"] = true, ["utc"] = now.ToString("O") },
-                cancellationToken: ct);
+            // Enqueue, don't execute: the RunDispatcher claims it like any other run.
+            // The dedupe key (workflow + interval bucket) is enforced by a unique index,
+            // so multiple scheduler replicas can never double-fire the same interval.
+            // The AnyAsync pre-check covers the InMemory test provider (the index is the
+            // hard guarantee on SQL Server; the DbUpdateException catch is the backstop).
+            var bucket = now.ToUnixTimeSeconds() / trigger.IntervalSeconds;
+            var dedupeKey = $"schedule:{workflow.Id}:{bucket}";
+            if (await db.RunQueueItems.AnyAsync(q => q.WorkflowId == workflow.Id && q.DedupeKey == dedupeKey, ct))
+                continue;
+            db.RunQueueItems.Add(new RunQueueItem
+            {
+                WorkflowId = workflow.Id,
+                InputJson = new JsonObject { ["scheduled"] = true, ["utc"] = now.ToString("O") }.ToJsonString(),
+                TriggerType = "schedule",
+                DedupeKey = dedupeKey
+            });
+            logger.LogInformation("Queued scheduled run for workflow '{Name}' ({Id}).", workflow.Name, workflow.Id);
+
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                // Another replica already queued this interval — drop this duplicate.
+                foreach (var entry in db.ChangeTracker.Entries().Where(e => e.State == EntityState.Added))
+                    entry.State = EntityState.Detached;
+            }
         }
     }
 }

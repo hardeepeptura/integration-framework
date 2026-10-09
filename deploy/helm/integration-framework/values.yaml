@@ -37,16 +37,23 @@ api:
       cpu: "1"
       memory: 512Mi
 
-# Scheduler must be single-replica (in-process scheduling); see deploy/README.
+# Workers: run dispatcher + scheduler + retention. Scale replicas for run
+# throughput (claims are race-safe via concurrency tokens; scheduled runs are
+# deduped per interval via the queue's unique index). Optional tuning env:
+#   Dispatcher:BatchSize (10), Dispatcher:PollSeconds (1),
+#   Dispatcher:VisibilityMinutes (5), Run:TimeoutSeconds (300),
+#   Retention:StepRunDays (90), Retention:WebhookEventDays (90),
+#   Retention:WorkflowRunDays (365), Retention:IntervalHours (24)
 worker:
   enabled: true
+  replicas: 2
   resources:
     requests:
-      cpu: 50m
-      memory: 192Mi
+      cpu: 100m
+      memory: 256Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: "1"
+      memory: 1Gi
 
 frontend:
   replicas: 2

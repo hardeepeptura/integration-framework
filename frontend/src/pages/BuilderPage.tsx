@@ -7,6 +7,23 @@ import type { Run, ValidationResult, Workflow, WorkflowGraph } from '../api/type
 import { defaultPositions, graphEdges, makeNodeId, NODE_TYPES, TYPE_LABELS } from '../builder/nodeDefs'
 import NodeConfigPanel from '../components/NodeConfigPanel'
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** Runs execute asynchronously on the worker dispatcher: poll for a terminal run of the workflow. */
+async function waitForRun(workflowId: string, sinceMs: number, attempts = 60): Promise<Run> {
+  for (let i = 0; i < attempts; i++) {
+    const runs = await api.listRuns(workflowId, 50)
+    const candidate = runs.find(
+      (r) =>
+        new Date(r.startedAt).getTime() >= sinceMs - 1500 &&
+        (r.status === 'success' || r.status === 'failed'),
+    )
+    if (candidate) return candidate
+    await sleep(1000)
+  }
+  throw new Error('Run did not finish within the wait window — check the Runs page.')
+}
+
 function toFlowNodes(graph: WorkflowGraph, run?: Run | null): Node[] {
   const positions = graph.positions ?? defaultPositions(graph.nodes)
   const lastStatus = new Map<string, string>()
@@ -133,9 +150,13 @@ export default function BuilderPage() {
     if (!id) return
     setBusy(true)
     setError(undefined)
+    setStatus('Run queued — waiting for the worker dispatcher…')
     try {
       await save()
-      const run = await api.runWorkflow(id, {})
+      // Async-first: the run is queued (202) and executed by the worker dispatcher.
+      const since = Date.now()
+      const enqueued = await api.runWorkflow(id, {})
+      const run = await waitForRun(enqueued.workflowId, since)
       const byId = new Map(run.steps.map((s) => [s.nodeId, s.status]))
       setRfNodes((current) =>
         current.map((n) => ({

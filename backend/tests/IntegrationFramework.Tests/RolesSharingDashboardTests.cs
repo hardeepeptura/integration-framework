@@ -72,15 +72,12 @@ public class RolesSharingDashboardTests : IDisposable
         _derived = _root.WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Self:BaseUrl", "http://localhost:8000");
+            // Private InMemory store: same-name databases are shared process-wide.
+            builder.UseSetting("InMemory:DatabaseName", $"if-roles-test-{Guid.NewGuid():N}");
             // ConfigureTestServices runs AFTER Program.cs registrations (the canonical
             // seam for minimal-hosting apps), so these reliably win.
             builder.ConfigureTestServices(services =>
             {
-                // Isolated InMemory store per factory instance.
-                services.RemoveAll<DbContextOptions<MetadataDbContext>>();
-                services.AddDbContext<MetadataDbContext>(o =>
-                    o.UseInMemoryDatabase($"if-roles-test-{Guid.NewGuid():N}"));
-
                 services.AddSingleton<TestAuthState>();
                 services.AddAuthentication(options =>
                 {

@@ -27,7 +27,10 @@ builder.Services.AddDbContext<MetadataDbContext>(options =>
     if (!string.IsNullOrWhiteSpace(metadataConnectionString))
         options.UseSqlServer(metadataConnectionString);
     else
-        options.UseInMemoryDatabase("integration-framework-dev");
+        // Same-name InMemory databases are shared process-wide: tests override the
+        // name (InMemory:DatabaseName) so each test host gets a private store.
+        options.UseInMemoryDatabase(
+            builder.Configuration["InMemory:DatabaseName"] ?? "integration-framework-dev");
 });
 
 // ----- DataProtection: share keys via the metadata store so both API replicas
@@ -63,8 +66,10 @@ builder.Services.AddSingleton<DemoCrmStore>();
 builder.Services.AddSingleton<DemoInventoryStore>();
 builder.Services.AddSingleton<DemoOAuthStore>();
 
-// ----- Scheduled triggers (worker role) -----
+// ----- Scheduled triggers + async run dispatch + retention (worker role) -----
 builder.Services.AddHostedService<SchedulerBackgroundService>();
+builder.Services.AddHostedService<IntegrationFramework.Worker.RunDispatcherBackgroundService>();
+builder.Services.AddHostedService<IntegrationFramework.Worker.RetentionBackgroundService>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>

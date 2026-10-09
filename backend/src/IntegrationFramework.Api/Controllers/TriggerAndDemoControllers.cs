@@ -10,12 +10,13 @@ using Microsoft.EntityFrameworkCore;
 namespace IntegrationFramework.Api.Controllers;
 
 /// <summary>
-/// Public webhook trigger: POST /webhook/{workflowId} executes the workflow with the body as input.
-/// Every delivery is persisted BEFORE execution (durable inbox) and linked to its run afterwards,
-/// so failed or interrupted deliveries can be replayed from WebhookEventsController.
+/// Public webhook trigger: POST /webhook/{workflowId} queues a run and returns 202 immediately.
+/// Every delivery is persisted BEFORE queueing (durable inbox) and linked to its run by the
+/// worker-side RunDispatcher, so failed or interrupted deliveries can be replayed from
+/// WebhookEventsController. The 202 contract keeps the API flat under bursts (no inline execution).
 /// </summary>
 [ApiController]
-public class WebhookController(MetadataDbContext db, WorkflowExecutor executor) : ControllerBase
+public class WebhookController(MetadataDbContext db) : ControllerBase
 {
     [HttpPost("webhook/{workflowId:guid}")]
     [Microsoft.AspNetCore.Authorization.AllowAnonymous] // external systems call this
@@ -43,25 +44,22 @@ public class WebhookController(MetadataDbContext db, WorkflowExecutor executor) 
             (triggerGraph.Nodes[0].Config["trigger"]?.ToJsonString().Trim('"') is not ("webhook" or "manual")))
             return await RejectAsync(webhookEvent, Conflict(new { error = "Workflow trigger is not a webhook." }));
 
-        var env = new Dictionary<string, string>
+        // Queue, don't execute: the RunDispatcher (worker) claims and runs it, then
+        // flips this event to succeeded/failed with the run id.
+        db.RunQueueItems.Add(new RunQueueItem
         {
-            ["self_base_url"] = HttpContext.RequestServices
-                .GetRequiredService<IConfiguration>()["Self:BaseUrl"] ?? "http://localhost:8000"
-        };
-        var run = await executor.ExecuteAsync(workflow, body, env);
-
-        webhookEvent.Status = run.Status == "success" ? "succeeded" : "failed";
-        webhookEvent.RunId = run.Id;
-        webhookEvent.Error = run.Error;
+            WorkflowId = workflowId,
+            InputJson = body?.ToJsonString(),
+            TriggerType = "webhook",
+            DedupeKey = $"run:{Guid.NewGuid():N}",
+            WebhookEventId = webhookEvent.Id
+        });
         await db.SaveChangesAsync();
 
-        return Ok(new
+        return Accepted(new
         {
             eventId = webhookEvent.Id,
-            runId = run.Id,
-            status = run.Status,
-            output = RunDto.From(run).Output,
-            error = run.Error
+            status = "queued"
         });
     }
 
