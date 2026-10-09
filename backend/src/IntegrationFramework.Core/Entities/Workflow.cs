@@ -6,6 +6,9 @@ public class Workflow
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string GraphJson { get; set; } = "{\"nodes\":[]}";
+    /// <summary>Optional project grouping (null = unassigned). Grouping only — does not affect access rules.</summary>
+    public Guid? ProjectId { get; set; }
+    public Project? Project { get; set; }
     public bool Enabled { get; set; } = true;
     /// <summary>Lowercase email of the owning user. Null = legacy workflow created before
     /// ownership existed: visible to every authenticated user, mutable by admins.</summary>

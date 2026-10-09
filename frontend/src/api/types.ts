@@ -25,9 +25,20 @@ export interface Workflow {
   description?: string
   enabled: boolean
   graph: WorkflowGraph | null
+  /** Optional project grouping (null = unassigned). Grouping only — does not affect access. */
+  projectId?: string | null
   ownerEmail?: string | null
   /** Caller's effective permission: manage (owner/admin), edit, view; null = SSO off (unrestricted). */
   myPermission?: 'manage' | 'edit' | 'view' | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Project {
+  id: string
+  name: string
+  description?: string | null
+  workflowCount: number
   createdAt: string
   updatedAt: string
 }

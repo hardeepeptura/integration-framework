@@ -41,7 +41,8 @@ public class DashboardController(MetadataDbContext db, CurrentUserService curren
     }
 
     [HttpGet("summary")]
-    public async Task<ActionResult<DashboardSummaryDto>> Summary([FromQuery] string range = "6m")
+    public async Task<ActionResult<DashboardSummaryDto>> Summary(
+        [FromQuery] string range = "6m", [FromQuery] Guid? projectId = null)
     {
         if (!Ranges.TryGetValue(range.ToLowerInvariant(), out var spec))
             return BadRequest(new { error = "Range must be one of: hour, 24h, 7d, 30d, 6m." });
@@ -50,7 +51,8 @@ public class DashboardController(MetadataDbContext db, CurrentUserService curren
         var now = DateTimeOffset.UtcNow;
         var from = now - spec.Window;
 
-        // Scope to the workflows this caller can see (same rule as the lists).
+        // Scope to the workflows this caller can see (same rule as the lists),
+        // then optionally to one project (Guid.Empty = unassigned workflows only).
         List<Core.Entities.Workflow> workflows;
         if (user is null || user.IsAdmin)
         {
@@ -64,6 +66,10 @@ public class DashboardController(MetadataDbContext db, CurrentUserService curren
                 .AsNoTracking()
                 .ToListAsync();
         }
+        if (projectId.HasValue)
+            workflows = projectId.Value == Guid.Empty
+                ? workflows.Where(w => w.ProjectId == null).ToList()
+                : workflows.Where(w => w.ProjectId == projectId.Value).ToList();
         var visibleIds = workflows.Select(w => w.Id).ToHashSet();
 
         // Totals: COUNT in the database (three cheap indexed counts).

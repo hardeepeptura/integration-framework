@@ -4,6 +4,7 @@ import { auth, type SessionState } from './api/client'
 import BuilderPage from './pages/BuilderPage'
 import ConnectionsPage from './pages/ConnectionsPage'
 import DashboardPage from './pages/DashboardPage'
+import ProjectsPage from './pages/ProjectsPage'
 import RunsPage from './pages/RunsPage'
 import UsersPage from './pages/UsersPage'
 import WebhooksPage from './pages/WebhooksPage'
@@ -25,6 +26,7 @@ export default function App() {
         <nav className="app-nav">
           <span className="brand">Neuro-Eptura</span>
           <Link to="/dashboard">Dashboard</Link>
+          <Link to="/projects">Projects</Link>
           <Link to="/workflows">Workflows</Link>
           <Link to="/connections">Connections</Link>
           <Link to="/runs">Runs</Link>
@@ -54,6 +56,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/workflows" element={<WorkflowsPage />} />
             <Route path="/workflows/:id/builder" element={<BuilderPage />} />
             <Route path="/runs" element={<RunsPage />} />

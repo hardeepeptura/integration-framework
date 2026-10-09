@@ -6,12 +6,16 @@ namespace IntegrationFramework.Api;
 
 public record WorkflowDto(
     Guid Id, string Name, string? Description, bool Enabled,
-    JsonNode? Graph, string? OwnerEmail, string? MyPermission, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
+    JsonNode? Graph, Guid? ProjectId, string? OwnerEmail, string? MyPermission, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
 {
     public static WorkflowDto From(Workflow w, string? myPermission = null) => new(
         w.Id, w.Name, w.Description, w.Enabled,
-        JsonNode.Parse(w.GraphJson), w.OwnerEmail, myPermission, w.CreatedAt, w.UpdatedAt);
+        JsonNode.Parse(w.GraphJson), w.ProjectId, w.OwnerEmail, myPermission, w.CreatedAt, w.UpdatedAt);
 }
+
+public record ProjectDto(
+    Guid Id, string Name, string? Description, int WorkflowCount,
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
 
 public record UserDto(Guid Id, string Email, string? DisplayName, string Role, DateTimeOffset CreatedAt)
 {

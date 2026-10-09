@@ -4,6 +4,7 @@ import type {
   ConnectionTestResult,
   DashboardRange,
   DashboardSummary,
+  Project,
   QueuedRun,
   Run,
   SharePermission,
@@ -65,15 +66,27 @@ export const auth = {
   },
 }
 
+/** The all-zeros guid means "unassigned" in project filters and assignment updates. */
+export const NO_PROJECT = '00000000-0000-0000-0000-000000000000'
+
 export const api = {
+  // Projects (grouping only — no effect on workflow access rules)
+  listProjects: () => request<Project[]>('/api/projects'),
+  createProject: (body: { name: string; description?: string }) =>
+    request<Project>('/api/projects', { method: 'POST', body: JSON.stringify(body) }),
+  updateProject: (id: string, body: { name?: string; description?: string }) =>
+    request<Project>(`/api/projects/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteProject: (id: string) => request<void>(`/api/projects/${id}`, { method: 'DELETE' }),
+
   // Workflows
-  listWorkflows: () => request<Workflow[]>('/api/workflows'),
+  listWorkflows: (projectId?: string) =>
+    request<Workflow[]>(`/api/workflows${projectId ? `?projectId=${projectId}` : ''}`),
   getWorkflow: (id: string) => request<Workflow>(`/api/workflows/${id}`),
-  createWorkflow: (body: { name: string; description?: string; enabled?: boolean; graph?: unknown }) =>
+  createWorkflow: (body: { name: string; description?: string; enabled?: boolean; graph?: unknown; projectId?: string }) =>
     request<Workflow>('/api/workflows', { method: 'POST', body: JSON.stringify(body) }),
   updateWorkflow: (
     id: string,
-    body: { name?: string; description?: string; enabled?: boolean; graph?: unknown },
+    body: { name?: string; description?: string; enabled?: boolean; graph?: unknown; projectId?: string },
   ) => request<Workflow>(`/api/workflows/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteWorkflow: (id: string) =>
     request<void>(`/api/workflows/${id}`, { method: 'DELETE' }),
@@ -139,6 +152,8 @@ export const api = {
     request<void>(`/api/workflows/${workflowId}/shares/${shareId}`, { method: 'DELETE' }),
 
   // Dashboard
-  dashboardSummary: (range: DashboardRange) =>
-    request<DashboardSummary>(`/api/dashboard/summary?range=${range}`),
+  dashboardSummary: (range: DashboardRange, projectId?: string) =>
+    request<DashboardSummary>(
+      `/api/dashboard/summary?range=${range}${projectId ? `&projectId=${projectId}` : ''}`,
+    ),
 }

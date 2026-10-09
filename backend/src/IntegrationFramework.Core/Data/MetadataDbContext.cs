@@ -18,14 +18,27 @@ public class MetadataDbContext(DbContextOptions<MetadataDbContext> options) : Db
     public DbSet<AppUser> AppUsers => Set<AppUser>();
     public DbSet<WorkflowShare> WorkflowShares => Set<WorkflowShare>();
     public DbSet<RunQueueItem> RunQueueItems => Set<RunQueueItem>();
+    public DbSet<Project> Projects => Set<Project>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<Project>(e =>
+        {
+            e.HasKey(p => p.Id);
+            e.Property(p => p.Name).HasMaxLength(200).IsRequired();
+            e.HasIndex(p => p.Name).IsUnique();
+        });
+
         modelBuilder.Entity<Workflow>(e =>
         {
             e.HasKey(w => w.Id);
             e.Property(w => w.Name).HasMaxLength(200).IsRequired();
             e.Property(w => w.GraphJson).IsRequired();
+            e.HasOne(w => w.Project)
+                .WithMany(p => p.Workflows)
+                .HasForeignKey(w => w.ProjectId)
+                .OnDelete(DeleteBehavior.Restrict); // delete guard is enforced in the API
+            e.HasIndex(w => w.ProjectId);
         });
 
         modelBuilder.Entity<WorkflowRun>(e =>

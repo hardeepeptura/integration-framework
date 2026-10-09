@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../api/client'
-import type { SharePermission, Workflow, WorkflowShare } from '../api/types'
+import { api, NO_PROJECT } from '../api/client'
+import type { Project, SharePermission, Workflow, WorkflowShare } from '../api/types'
 
-const EMPTY_NEW = { name: '', description: '', triggerType: 'manual' as 'manual' | 'webhook' | 'schedule' }
+const EMPTY_NEW = {
+  name: '',
+  description: '',
+  triggerType: 'manual' as 'manual' | 'webhook' | 'schedule',
+  projectId: '', // '' = unassigned
+}
 
 const iconProps = {
   viewBox: '0 0 24 24',
@@ -53,14 +58,23 @@ export default function WorkflowsPage() {
   const [shares, setShares] = useState<WorkflowShare[]>([])
   const [shareEmail, setShareEmail] = useState('')
   const [sharePerm, setSharePerm] = useState<SharePermission>('view')
+  const [projects, setProjects] = useState<Project[]>([])
+  const [projectFilter, setProjectFilter] = useState('') // '' = all, NO_PROJECT = unassigned
   const navigate = useNavigate()
 
   const load = useCallback(async () => {
     try {
-      setWorkflows(await api.listWorkflows())
+      setWorkflows(await api.listWorkflows(projectFilter || undefined))
     } catch (e) {
       setError(String(e))
     }
+  }, [projectFilter])
+
+  useEffect(() => {
+    void api
+      .listProjects()
+      .then(setProjects)
+      .catch((e) => setError(String(e)))
   }, [])
 
   useEffect(() => {
@@ -151,6 +165,19 @@ export default function WorkflowsPage() {
     }
   }
 
+  const assignProject = async (wf: Workflow, projectId: string) => {
+    setError(undefined)
+    try {
+      // NO_PROJECT (the all-zeros guid) explicitly unassigns on the backend.
+      await api.updateWorkflow(wf.id, { projectId })
+      await load()
+      // Keep the project-card counts fresh after a move.
+      void api.listProjects().then(setProjects).catch(() => undefined)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
   const create = async () => {
     setError(undefined)
     if (!newWf.name.trim()) {
@@ -162,6 +189,7 @@ export default function WorkflowsPage() {
       const created = await api.createWorkflow({
         name: newWf.name.trim(),
         description: newWf.description.trim() || undefined,
+        projectId: newWf.projectId || undefined,
         graph: {
           nodes: [
             { id: 'trigger', type: 'trigger', config: { trigger: newWf.triggerType } },
@@ -180,6 +208,19 @@ export default function WorkflowsPage() {
       <h1>Workflows</h1>
       {error && <div className="error-text">{error}</div>}
       <div className="toolbar-row">
+        <select
+          value={projectFilter}
+          onChange={(e) => setProjectFilter(e.target.value)}
+          title="Filter workflows by project"
+        >
+          <option value="">All projects</option>
+          <option value={NO_PROJECT}>No project</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name} ({p.workflowCount})
+            </option>
+          ))}
+        </select>
         <button type="button" className="primary" onClick={() => setShowCreate((s) => !s)}>
           {showCreate ? 'Close' : '+ New workflow'}
         </button>
@@ -207,6 +248,18 @@ export default function WorkflowsPage() {
             <option value="webhook">Webhook</option>
             <option value="schedule">Schedule</option>
           </select>
+          <label>Project</label>
+          <select
+            value={newWf.projectId}
+            onChange={(e) => setNewWf((f) => ({ ...f, projectId: e.target.value }))}
+          >
+            <option value="">No project</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
           <div style={{ marginTop: 16 }}>
             <button type="button" className="primary" disabled={creating} onClick={() => void create()}>
               {creating ? 'Creating…' : 'Create and open builder'}
@@ -219,6 +272,7 @@ export default function WorkflowsPage() {
           <tr>
             <th>Name</th>
             <th>Description</th>
+            <th>Project</th>
             <th>Status</th>
             <th>Owner</th>
             <th>Updated</th>
@@ -234,6 +288,23 @@ export default function WorkflowsPage() {
               <tr key={wf.id}>
                 <td>{wf.name}</td>
                 <td>{wf.description}</td>
+                <td>
+                  {/* Inline reassignment; grouping only, still gated by the edit permission. */}
+                  <select
+                    style={{ width: 150 }}
+                    disabled={!canEdit}
+                    value={wf.projectId ?? NO_PROJECT}
+                    title={canEdit ? 'Move this workflow to a project' : 'No edit permission'}
+                    onChange={(e) => void assignProject(wf, e.target.value)}
+                  >
+                    <option value={NO_PROJECT}>No project</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </td>
                 <td>
                   <span className={`badge ${wf.enabled ? 'enabled' : 'disabled'}`}>
                     {wf.enabled ? 'enabled' : 'disabled'}
@@ -273,7 +344,7 @@ export default function WorkflowsPage() {
           })}
           {workflows.length === 0 && (
             <tr>
-              <td colSpan={6}>No workflows yet.</td>
+              <td colSpan={7}>No workflows{projectFilter ? ' in this project' : ' yet'}.</td>
             </tr>
           )}
         </tbody>

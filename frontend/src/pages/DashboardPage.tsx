@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api } from '../api/client'
-import type { DashboardRange, DashboardSummary } from '../api/types'
+import { api, NO_PROJECT } from '../api/client'
+import type { DashboardRange, DashboardSummary, Project } from '../api/types'
 
 const RANGES: { value: DashboardRange; label: string }[] = [
   { value: 'hour', label: 'Last hour' },
@@ -27,21 +27,30 @@ function bucketLabel(iso: string, range: DashboardRange): string {
 
 export default function DashboardPage() {
   const [range, setRange] = useState<DashboardRange>('6m')
+  const [projects, setProjects] = useState<Project[]>([])
+  const [projectFilter, setProjectFilter] = useState('') // '' = all, NO_PROJECT = unassigned
   const [summary, setSummary] = useState<DashboardSummary>()
   const [error, setError] = useState<string>()
 
   const load = useCallback(async () => {
     try {
-      setSummary(await api.dashboardSummary(range))
+      setSummary(await api.dashboardSummary(range, projectFilter || undefined))
       setError(undefined)
     } catch (e) {
       setError(String(e))
     }
-  }, [range])
+  }, [range, projectFilter])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    void api
+      .listProjects()
+      .then(setProjects)
+      .catch(() => undefined)
+  }, [])
 
   const max = Math.max(1, ...(summary?.buckets.map((b) => b.total) ?? [1]))
 
@@ -54,6 +63,19 @@ export default function DashboardPage() {
           {RANGES.map((r) => (
             <option key={r.value} value={r.value}>
               {r.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={projectFilter}
+          onChange={(e) => setProjectFilter(e.target.value)}
+          title="Scope the dashboard to a project"
+        >
+          <option value="">All projects</option>
+          <option value={NO_PROJECT}>No project</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
             </option>
           ))}
         </select>

@@ -19,21 +19,32 @@ public class WorkflowsController(
         public string? Description { get; set; }
         public bool? Enabled { get; set; }
         public JsonNode? Graph { get; set; }
+        /// <summary>Project grouping. Guid.Empty explicitly unassigns; null = leave unchanged (create: unassigned).</summary>
+        public Guid? ProjectId { get; set; }
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<WorkflowDto>>> List()
+    public async Task<ActionResult<IEnumerable<WorkflowDto>>> List(
+        [FromQuery] Guid? projectId)
     {
         var user = await currentUser.ResolveAsync(User);
+        var query = db.Workflows.AsQueryable();
+
+        // Project filter: a real id scopes to that project, Guid.Empty to unassigned.
+        if (projectId.HasValue)
+            query = projectId.Value == Guid.Empty
+                ? query.Where(w => w.ProjectId == null)
+                : query.Where(w => w.ProjectId == projectId.Value);
+
         List<Core.Entities.Workflow> workflows;
         if (user is null || user.IsAdmin)
         {
-            workflows = await db.Workflows.OrderBy(w => w.CreatedAt).ToListAsync();
+            workflows = await query.OrderBy(w => w.CreatedAt).ToListAsync();
         }
         else
         {
             var visible = await access.VisibleWorkflowIdsAsync(user);
-            workflows = await db.Workflows
+            workflows = await query
                 .Where(w => visible.Contains(w.Id))
                 .OrderBy(w => w.CreatedAt)
                 .ToListAsync();
@@ -62,12 +73,16 @@ public class WorkflowsController(
             return BadRequest(new { error = "Workflow graph failed validation.", errors });
 
         var user = await currentUser.ResolveAsync(User);
+        var (projectExists, projectId) = await ResolveProjectIdAsync(request.ProjectId);
+        if (!projectExists)
+            return BadRequest(new { error = "Project does not exist." });
         var workflow = new IntegrationFramework.Core.Entities.Workflow
         {
             Name = request.Name,
             Description = request.Description,
             Enabled = request.Enabled ?? true,
             GraphJson = graphJson,
+            ProjectId = projectId,
             OwnerEmail = user?.Email
         };
         db.Workflows.Add(workflow);
@@ -95,6 +110,13 @@ public class WorkflowsController(
         if (request.Name is not null) workflow.Name = request.Name;
         if (request.Description is not null) workflow.Description = request.Description;
         if (request.Enabled is not null) workflow.Enabled = request.Enabled.Value;
+        if (request.ProjectId.HasValue)
+        {
+            var (projectExists, projectId) = await ResolveProjectIdAsync(request.ProjectId);
+            if (!projectExists)
+                return BadRequest(new { error = "Project does not exist." });
+            workflow.ProjectId = projectId; // empty guid → unassigned
+        }
         workflow.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync();
         return Ok(WorkflowDto.From(workflow, EffectivePermission(user, workflow)));
@@ -161,6 +183,18 @@ public class WorkflowsController(
         await db.Workflows
             .Include(w => w.Shares)
             .FirstOrDefaultAsync(w => w.Id == id);
+
+    /// <summary>
+    /// Resolves the requested project id: null or Guid.Empty → unassigned (null);
+    /// otherwise the project must exist (Exists=false → caller returns a 400).
+    /// </summary>
+    private async Task<(bool Exists, Guid? ProjectId)> ResolveProjectIdAsync(Guid? requested)
+    {
+        if (requested is null || requested.Value == Guid.Empty) return (true, null);
+        return await db.Projects.AnyAsync(p => p.Id == requested.Value)
+            ? (true, requested)
+            : (false, null);
+    }
 
     /// <summary>The caller's effective permission on the workflow, for UI affordances. Null = unrestricted (SSO off).</summary>
     private static string? EffectivePermission(CurrentUser? user, Core.Entities.Workflow workflow)
