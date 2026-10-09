@@ -17,7 +17,9 @@ public static class RunPolling
     {
         for (var i = 0; i < attempts; i++)
         {
-            var runs = await client.GetFromJsonAsync<JsonArray>($"/api/runs?workflowId={workflowId}&limit=50");
+            var page = await client.GetFromJsonAsync<JsonObject>(
+                $"/api/runs?workflowId={workflowId}&page=1&pageSize=50");
+            var runs = page?["items"] as JsonArray;
             var candidate = runs?
                 .Where(r => DateTimeOffset.TryParse(r!["startedAt"]?.GetValue<string>(), out var t) && t >= since)
                 .OrderByDescending(r => r!["startedAt"]!.GetValue<string>(), StringComparer.Ordinal)

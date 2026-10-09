@@ -120,6 +120,14 @@ export interface Run {
   steps: RunStep[]
 }
 
+/** Paged runs response: /api/runs?search=&page=&pageSize= (search matches workflow name, status, error text, or an exact run id). */
+export interface RunList {
+  items: Run[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 export type ConnectionKind = 'http' | 'db'
 export type DbType = 'mssql' | 'postgres' | 'mysql'
 

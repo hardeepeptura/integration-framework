@@ -7,6 +7,7 @@ import type {
   Project,
   QueuedRun,
   Run,
+  RunList,
   SharePermission,
   ValidationResult,
   WebhookEnqueueResult,
@@ -99,9 +100,15 @@ export const api = {
   runWorkflow: (id: string, input?: unknown) =>
     request<QueuedRun>(`/api/workflows/${id}/run`, { method: 'POST', body: JSON.stringify(input ?? {}) }),
 
-  // Runs
-  listRuns: (workflowId?: string, limit = 100) =>
-    request<Run[]>(`/api/runs?limit=${limit}${workflowId ? `&workflowId=${workflowId}` : ''}`),
+  // Runs — paged + searchable (page 1-based, pageSize default 100)
+  listRuns: (params?: { workflowId?: string; search?: string; page?: number; pageSize?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.workflowId) qs.set('workflowId', params.workflowId)
+    if (params?.search?.trim()) qs.set('search', params.search.trim())
+    qs.set('page', String(params?.page ?? 1))
+    qs.set('pageSize', String(params?.pageSize ?? 100))
+    return request<RunList>(`/api/runs?${qs.toString()}`)
+  },
   getRun: (id: string) => request<Run>(`/api/runs/${id}`),
   rerunRun: (id: string) => request<QueuedRun>(`/api/runs/${id}/rerun`, { method: 'POST' }),
 

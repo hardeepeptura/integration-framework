@@ -55,12 +55,16 @@ procedure, and platform gotchas.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET/POST | `/api/workflows` | List / create workflows |
-| GET/PUT/DELETE | `/api/workflows/{id}` | Read / update / delete |
+| GET/POST | `/api/workflows` | List / create workflows (list filterable by `?projectId=`) |
+| GET/PUT/DELETE | `/api/workflows/{id}` | Read / update / delete (update accepts `projectId`) |
 | POST | `/api/workflows/{id}/validate` | Validate graph |
-| POST | `/api/workflows/{id}/run` | Manual run (inline) |
-| GET | `/api/runs`, `/api/runs/{id}` | Run history / detail with per-step I/O |
-| POST | `/api/runs/{id}/rerun` | Rerun with original input |
+| POST | `/api/workflows/{id}/run` | Queue a manual run (202-queued, async-first) |
+| GET | `/api/runs` | Paged run history: `?search=&page=&pageSize=` (search matches workflow name, status, error text, or an exact run id; pageSize default 100) |
+| GET | `/api/runs/{id}` | Run detail with per-step I/O |
+| POST | `/api/runs/{id}/rerun` | Queue a rerun with the original input (202-queued) |
+| GET/POST | `/api/projects` | List / create projects (workflow grouping) |
+| GET/PUT/DELETE | `/api/projects/{id}` | Read / update / delete (delete blocked while non-empty) |
+| GET | `/api/dashboard/summary` | Aggregated totals/rates/buckets (`?range=hour|24h|7d|30d|6m&projectId=`) |
 | GET/POST | `/api/connections` | List / create connections |
 | PUT/DELETE | `/api/connections/{id}` | Update / delete |
 | POST | `/api/connections/{id}/test` | Test HTTP auth or DB connectivity |
@@ -71,7 +75,7 @@ procedure, and platform gotchas.
 | PUT/DELETE | `/api/entity-mappings/{id}` | Update / delete |
 | POST | `/api/entity-mappings/{id}/validate` | Apply mapping + rules to a sample payload |
 | GET | `/health` | Liveness + metadata provider info |
-| — | `/demo/crm`, `/demo/inventory` | Mock systems for the sample workflow |
+| — | `/demo/crm`, `/demo/inventory`, `/demo/secure`, `/demo/oauth2` | Mock systems + demo OAuth2 server for the seeded samples |
 
 ## Workflow graph model
 

@@ -13,24 +13,63 @@ public class RunsController(
     MetadataDbContext db, WorkflowExecutor executor,
     CurrentUserService currentUser, WorkflowAccessService access) : ControllerBase
 {
+    /// <summary>
+    /// Paged, searchable run list. Search matches (case-insensitive): a workflow's
+    /// name, the run status (success/failed/running), the error text, or an exact
+    /// run id pasted as a guid. Page is 1-based; pageSize defaults to 100 (max 500).
+    /// </summary>
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<RunDto>>> List(
-        [FromQuery] Guid? workflowId, [FromQuery] int limit = 50)
+    public async Task<ActionResult<PagedRunsDto>> List(
+        [FromQuery] Guid? workflowId, [FromQuery] string? search,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 100)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 500);
+
         var user = await currentUser.ResolveAsync(User);
         var query = db.WorkflowRuns.AsNoTracking().AsQueryable();
-        if (workflowId is not null) query = query.Where(r => r.WorkflowId == workflowId);
+
+        List<Guid>? visible = null;
         if (user is not null && !user.IsAdmin)
         {
-            var visible = await access.VisibleWorkflowIdsAsync(user);
+            visible = await access.VisibleWorkflowIdsAsync(user);
             query = query.Where(r => visible.Contains(r.WorkflowId));
         }
-        var runs = await query
+        if (workflowId is not null) query = query.Where(r => r.WorkflowId == workflowId);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            var lowered = term.ToLowerInvariant();
+            var exactId = Guid.TryParse(term, out var runId) ? runId : (Guid?)null;
+
+            // Workflow-name matches, scoped to what this caller can see.
+            var names = await db.Workflows.AsNoTracking()
+                .Select(w => new { w.Id, w.Name })
+                .ToListAsync();
+            var nameMatchedIds = names
+                .Where(w => (visible is null || visible.Contains(w.Id))
+                            && w.Name.ToLower().Contains(lowered))
+                .Select(w => w.Id)
+                .ToList();
+
+            query = query.Where(r =>
+                r.Status == lowered
+                || (r.Error != null && r.Error.ToLower().Contains(lowered))
+                || r.Id == exactId
+                || nameMatchedIds.Contains(r.WorkflowId));
+        }
+
+        var total = await query.CountAsync();
+        var items = await query
             .OrderByDescending(r => r.StartedAt)
-            .Take(Math.Clamp(limit, 1, 500))
-            .Include(r => r.StepRuns)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync();
-        return Ok(runs.Select(r => RunDto.From(r, includeSteps: false)));
+
+        return Ok(new PagedRunsDto(
+            items.Select(r => RunDto.From(r, includeSteps: false)).ToList(),
+            total, page, pageSize));
     }
 
     [HttpGet("{id:guid}")]

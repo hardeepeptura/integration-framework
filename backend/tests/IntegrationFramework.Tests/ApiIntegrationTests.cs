@@ -200,9 +200,13 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.TestFactory
         Assert.Equal("4 x WIDGET-1", runDto["output"]!["line"]!.GetValue<string>());
         Assert.True((runDto["steps"] as JsonArray)!.Count == 2);
 
-        // Runs list + detail
-        var list = await _client.GetFromJsonAsync<JsonArray>("/api/runs");
-        Assert.Contains(list!, r => r!["id"]!.GetValue<string>() == runDto["id"]!.GetValue<string>());
+        // Runs list (paged) + detail
+        var list = await _client.GetFromJsonAsync<JsonObject>("/api/runs");
+        var items = list!["items"]!.AsArray();
+        Assert.Contains(items, r => r!["id"]!.GetValue<string>() == runDto["id"]!.GetValue<string>());
+        Assert.True(list["total"]!.GetValue<int>() >= 1);
+        Assert.Equal(1, list["page"]!.GetValue<int>());
+        Assert.Equal(100, list["pageSize"]!.GetValue<int>());
 
         var detail = await _client.GetFromJsonAsync<JsonObject>($"/api/runs/{runDto["id"]!.GetValue<string>()}");
         Assert.Equal("success", detail!["status"]!.GetValue<string>());

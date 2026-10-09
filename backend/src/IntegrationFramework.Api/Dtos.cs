@@ -84,6 +84,9 @@ public record RunDto(
 
 public record ValidationResultDto(bool Valid, IReadOnlyList<string> Errors);
 
+/// <summary>Paged runs list: page/pageSize echo the request; total drives the pager UI.</summary>
+public record PagedRunsDto(IReadOnlyList<RunDto> Items, int Total, int Page, int PageSize);
+
 public record ConnectionTestResultDto(bool Success, string Detail);
 
 public record EntityMappingDto(

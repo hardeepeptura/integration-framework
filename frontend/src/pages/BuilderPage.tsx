@@ -12,8 +12,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 /** Runs execute asynchronously on the worker dispatcher: poll for a terminal run of the workflow. */
 async function waitForRun(workflowId: string, sinceMs: number, attempts = 60): Promise<Run> {
   for (let i = 0; i < attempts; i++) {
-    const runs = await api.listRuns(workflowId, 50)
-    const candidate = runs.find(
+    const result = await api.listRuns({ workflowId, pageSize: 50 })
+    const candidate = result.items.find(
       (r) =>
         new Date(r.startedAt).getTime() >= sinceMs - 1500 &&
         (r.status === 'success' || r.status === 'failed'),

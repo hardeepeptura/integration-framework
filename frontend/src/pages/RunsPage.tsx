@@ -2,6 +2,8 @@ import { Fragment, useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { Run, Workflow } from '../api/types'
 
+const PAGE_SIZES = [50, 100, 200, 500]
+
 function JsonView({ value }: { value: unknown }) {
   if (value === undefined || value === null) return <div className="json-view">(empty)</div>
   return <div className="json-view">{JSON.stringify(value, null, 2)}</div>
@@ -11,16 +13,38 @@ export default function RunsPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [workflowFilter, setWorkflowFilter] = useState<string>('')
   const [runs, setRuns] = useState<Run[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(100)
   const [expanded, setExpanded] = useState<Run>()
   const [error, setError] = useState<string>()
 
+  // Search-as-you-type (debounced) over workflow name, status, error text or an
+  // exact run id — all matched server-side.
+  const [searchText, setSearchText] = useState('')
+  const [search, setSearch] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchText.trim())
+      setPage(1)
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [searchText])
+
   const load = useCallback(async () => {
     try {
-      setRuns(await api.listRuns(workflowFilter || undefined))
+      const result = await api.listRuns({
+        workflowId: workflowFilter || undefined,
+        search: search || undefined,
+        page,
+        pageSize,
+      })
+      setRuns(result.items)
+      setTotal(result.total)
     } catch (e) {
       setError(String(e))
     }
-  }, [workflowFilter])
+  }, [workflowFilter, search, page, pageSize])
 
   useEffect(() => {
     void api
@@ -33,7 +57,7 @@ export default function RunsPage() {
     void load()
   }, [load])
 
-  // Runs now execute asynchronously on the worker dispatcher — auto-refresh so
+  // Runs execute asynchronously on the worker dispatcher — auto-refresh so
   // newly queued runs appear and running ones flip to success/failed on their own.
   useEffect(() => {
     const interval = setInterval(() => {
@@ -64,15 +88,36 @@ export default function RunsPage() {
     }
   }
 
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const showingFrom = total === 0 ? 0 : (page - 1) * pageSize + 1
+  const showingTo = Math.min(page * pageSize, total)
+
   return (
     <div className="page">
       <h1>Runs</h1>
       <div className="toolbar-row">
-        <select value={workflowFilter} onChange={(e) => setWorkflowFilter(e.target.value)}>
+        <input
+          style={{ width: 260 }}
+          value={searchText}
+          placeholder="Search: workflow name, status, error, run id"
+          onChange={(e) => setSearchText(e.target.value)}
+        />
+        <select value={workflowFilter} onChange={(e) => { setWorkflowFilter(e.target.value); setPage(1) }}>
           <option value="">All workflows</option>
           {workflows.map((w) => (
             <option key={w.id} value={w.id}>
               {w.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={pageSize}
+          title="Rows per page"
+          onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}
+        >
+          {PAGE_SIZES.map((s) => (
+            <option key={s} value={s}>
+              {s} / page
             </option>
           ))}
         </select>
@@ -149,11 +194,26 @@ export default function RunsPage() {
           })}
           {runs.length === 0 && (
             <tr>
-              <td colSpan={6}>No runs yet — trigger a workflow to see history.</td>
+              <td colSpan={6}>No runs match{search ? ` “${search}”` : ''} — trigger a workflow to see history.</td>
             </tr>
           )}
         </tbody>
       </table>
+
+      <div className="toolbar-row" style={{ marginTop: 12 }}>
+        <span style={{ fontSize: 13, color: '#64748b' }}>
+          Showing {showingFrom}–{showingTo} of {total}
+        </span>
+        <button type="button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+          ← Prev
+        </button>
+        <span style={{ fontSize: 13 }}>
+          Page {page} / {totalPages}
+        </span>
+        <button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+          Next →
+        </button>
+      </div>
     </div>
   )
 }
