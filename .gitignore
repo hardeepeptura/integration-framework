@@ -19,3 +19,4 @@ dist/
 
 # Logs
 *.log
+frontend/src/generated-help.md

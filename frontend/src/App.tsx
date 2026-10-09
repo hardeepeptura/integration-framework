@@ -4,6 +4,7 @@ import { auth, type SessionState } from './api/client'
 import BuilderPage from './pages/BuilderPage'
 import ConnectionsPage from './pages/ConnectionsPage'
 import DashboardPage from './pages/DashboardPage'
+import HelpPage from './pages/HelpPage'
 import ProjectsPage from './pages/ProjectsPage'
 import RunsPage from './pages/RunsPage'
 import UsersPage from './pages/UsersPage'
@@ -32,6 +33,7 @@ export default function App() {
           <Link to="/runs">Runs</Link>
           <Link to="/webhooks">Webhooks</Link>
           {session?.isAdmin && <Link to="/users">Users</Link>}
+          <Link to="/help">Help</Link>
           {session?.ssoEnabled &&
             (session.authenticated ? (
               <div className="nav-right">
@@ -63,6 +65,7 @@ export default function App() {
             <Route path="/webhooks" element={<WebhooksPage />} />
             <Route path="/connections" element={<ConnectionsPage />} />
             {session?.isAdmin && <Route path="/users" element={<UsersPage />} />}
+            <Route path="/help" element={<HelpPage />} />
           </Routes>
         </main>
       </div>
