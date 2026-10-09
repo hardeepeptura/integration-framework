@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Run, ValidationResult, Workflow, WorkflowGraph } from '../api/types'
-import { defaultPositions, graphEdges, makeNodeId, NODE_TYPES, TYPE_LABELS } from '../builder/nodeDefs'
+import { defaultPositions, graphEdges, makeNodeId, NODE_TYPES, renameNodeInGraph, TYPE_LABELS } from '../builder/nodeDefs'
 import NodeConfigPanel from '../components/NodeConfigPanel'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -95,6 +95,17 @@ export default function BuilderPage() {
       },
     ])
     setSelectedId(nodeId)
+  }
+
+  const renameNode = (oldId: string, newId: string) => {
+    // Rename the step id + every reference to it ($.steps paths, condition
+    // branches, loop bodies, canvas positions) across the whole graph.
+    setGraph((g) => renameNodeInGraph(g, oldId, newId))
+    setRfNodes((current) =>
+      current.map((n) => (n.id === oldId ? { ...n, id: newId, data: { ...n.data, label: newId } } : n)),
+    )
+    setSelectedId(newId)
+    setStatus(`Step renamed "${oldId}" → "${newId}" (references updated). Save to persist.`)
   }
 
   const removeNode = (nodeId: string) => {
@@ -241,6 +252,7 @@ export default function BuilderPage() {
             node={selected}
             graph={graph}
             onChange={(config) => updateConfig(selected.id, config)}
+            onRename={(newId) => renameNode(selected.id, newId)}
             onDelete={() => removeNode(selected.id)}
           />
         ) : (

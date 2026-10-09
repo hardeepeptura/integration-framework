@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { Connection, GraphNodeDef, WorkflowGraph } from '../api/types'
-import { TYPE_LABELS, asStringArray } from '../builder/nodeDefs'
+import { TYPE_LABELS, asStringArray, isValidNodeId } from '../builder/nodeDefs'
 
 interface Props {
   node: GraphNodeDef
   graph: WorkflowGraph
   onChange: (config: Record<string, unknown>) => void
   onDelete: () => void
+  /** Rename this step (its id) across the whole graph, including $.steps references. */
+  onRename: (newId: string) => void
 }
 
 function JsonField({ label, value, onChange }: { label: string; value: unknown; onChange: (v: unknown) => void }) {
@@ -68,11 +70,36 @@ function NodeListPicker({
   )
 }
 
-export default function NodeConfigPanel({ node, graph, onChange, onDelete }: Props) {
+export default function NodeConfigPanel({ node, graph, onChange, onDelete, onRename }: Props) {
   const [connections, setConnections] = useState<Connection[]>([])
+  const [nameText, setNameText] = useState(node.id)
+  const [renameError, setRenameError] = useState<string>()
   useEffect(() => {
     void api.listConnections().then(setConnections).catch(() => setConnections([]))
   }, [])
+
+  // Applied on blur/Enter so typing does not thrash the graph on every keystroke.
+  const applyRename = () => {
+    const value = nameText.trim()
+    if (value === node.id) {
+      setRenameError(undefined)
+      return
+    }
+    if (!value) {
+      setRenameError('Step name cannot be empty.')
+      return
+    }
+    if (!isValidNodeId(value)) {
+      setRenameError('Letters, digits, "-" and "_" only — the name is used in $.steps.<name> references.')
+      return
+    }
+    if (graph.nodes.some((n) => n.id === value)) {
+      setRenameError(`"${value}" is already used by another step.`)
+      return
+    }
+    setRenameError(undefined)
+    onRename(value)
+  }
 
   const config = node.config
   const set = (patch: Record<string, unknown>) => onChange({ ...config, ...patch })
@@ -87,6 +114,19 @@ export default function NodeConfigPanel({ node, graph, onChange, onDelete }: Pro
       <h3 style={{ marginTop: 0 }}>
         {TYPE_LABELS[node.type]} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({node.id})</span>
       </h3>
+
+      <label>Step name (used in {"$.steps.<name>"} references)</label>
+      <input
+        value={nameText}
+        spellCheck={false}
+        placeholder="e.g. fetch-orders"
+        onChange={(e) => setNameText(e.target.value)}
+        onBlur={applyRename}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+        }}
+      />
+      {renameError && <div className="error-text">{renameError}</div>}
 
       {node.type === 'trigger' && (
         <>

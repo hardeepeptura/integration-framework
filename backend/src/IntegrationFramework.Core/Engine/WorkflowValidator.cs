@@ -39,6 +39,10 @@ public class WorkflowValidator(MetadataDbContext db)
         {
             if (!seen.Add(node.Id))
                 errors.Add($"Duplicate node id '{node.Id}'.");
+            // Ids are used inside "$.steps.<id>.<path>" references: path-unsafe ids
+            // (dots, braces, spaces...) silently break path resolution at runtime.
+            if (!System.Text.RegularExpressions.Regex.IsMatch(node.Id, "^[A-Za-z0-9_-]+$"))
+                errors.Add($"Node id '{node.Id}': ids may only contain letters, digits, '-' and '_' (they are used in $.steps.<id> references).");
             ValidateNodeConfig(node, errors, ct);
         }
 

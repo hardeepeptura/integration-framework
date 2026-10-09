@@ -92,6 +92,67 @@ export function makeNodeId(type: NodeType, existing: Set<string>): string {
   return `${type}-${i}`
 }
 
+/** Node ids are used inside $.steps.<id> path references: keep them path-safe. */
+export function isValidNodeId(id: string): boolean {
+  return /^[A-Za-z0-9_-]+$/.test(id)
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** Rewrites "$.steps.<oldId>..." references (any tail) inside a config value tree. */
+function rewriteRefs(value: unknown, oldId: string, newId: string): unknown {
+  if (typeof value === 'string') {
+    // Token boundary: not followed by another id character, so 'transform-1'
+    // never matches inside 'transform-10'.
+    return value.replace(new RegExp(`\\$\\.steps\\.${escapeRegExp(oldId)}(?![\\w-])`, 'g'), `$.steps.${newId}`)
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => rewriteRefs(item, oldId, newId))
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = rewriteRefs(child, oldId, newId)
+    }
+    return out
+  }
+  return value
+}
+
+/** Replaces exact node-id list entries (condition branches, loop bodies). */
+function rewriteIdLists(value: unknown, oldId: string, newId: string): unknown {
+  if (Array.isArray(value)) return value.map((item) => (item === oldId ? newId : item))
+  return value
+}
+
+/**
+ * Renames a step across the whole graph: the node id, every $.steps.<oldId> reference
+ * inside every node's config (mapping templates, URLs, operands, bodies...), the
+ * condition on_true/on_false and loop body id lists, and the saved canvas positions.
+ */
+export function renameNodeInGraph(graph: WorkflowGraph, oldId: string, newId: string): WorkflowGraph {
+  const nodes = graph.nodes.map((n) => {
+    // Every node's config gets its references rewritten (branch/body id lists +
+    // $.steps paths) — including the renamed node's own config.
+    const config: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(n.config)) {
+      const rewritten = key === 'on_true' || key === 'on_false' || key === 'body'
+        ? rewriteIdLists(value, oldId, newId)
+        : value
+      config[key] = rewriteRefs(rewritten, oldId, newId)
+    }
+    return { ...n, id: n.id === oldId ? newId : n.id, config }
+  })
+  const positions = graph.positions
+    ? Object.fromEntries(
+        Object.entries(graph.positions).map(([key, pos]) => [key === oldId ? newId : key, pos]),
+      )
+    : undefined
+  return { nodes, positions }
+}
+
 /** Default vertical layout for a freshly loaded graph without saved positions. */
 export function defaultPositions(nodes: GraphNodeDef[]): Record<string, { x: number; y: number }> {
   const positions: Record<string, { x: number; y: number }> = {}

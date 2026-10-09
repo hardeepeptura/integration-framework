@@ -139,6 +139,19 @@ public class WorkflowValidatorTests : IDisposable
         Assert.Single(errors);
     }
 
+    [Theory]
+    [InlineData("step.one")]
+    [InlineData("step one")]
+    [InlineData("step${x}")]
+    public async Task Path_unsafe_node_ids_fail(string id)
+    {
+        var graph = Graph(
+            Node("trigger", "trigger"),
+            Node(id, "delay", new JsonObject { ["seconds"] = 1 }));
+        var errors = await _validator.ValidateAsync(graph);
+        Assert.Contains(errors, e => e.Contains("letters, digits"));
+    }
+
     [Fact]
     public async Task Parse_failure_is_reported()
     {
